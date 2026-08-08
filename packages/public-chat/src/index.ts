@@ -1,6 +1,7 @@
 interface Env {
   OPENAI_API_KEY?: string;
   OPENAI_MODEL?: string;
+  BOOKING_AVAILABILITY_URL?: string;
 }
 
 const ALLOWED_ORIGINS = new Set([
@@ -8,7 +9,9 @@ const ALLOWED_ORIGINS = new Set([
   "https://www.thonbecker.biz",
   "https://booking.thonbecker.biz",
 ]);
+const DEFAULT_TIMEZONE = "America/Chicago";
 const MAX_MESSAGE_LENGTH = 1_000;
+const MAX_TIMEZONE_LENGTH = 100;
 const WINDOW_MS = 10 * 60 * 1_000;
 const MAX_REQUESTS_PER_WINDOW = 10;
 const requestWindows = new Map<string, { count: number; resetAt: number }>();
@@ -16,7 +19,8 @@ const requestWindows = new Map<string, { count: number; resetAt: number }>();
 const SYSTEM_PROMPT = [
   "You are the public assistant for Thon Becker's personal website.",
   "Answer briefly and helpfully about the website, Cloudflare OS learning project, and general software engineering.",
-  "You cannot book meetings, inspect private data, access accounts, or perform actions.",
+  "You may answer questions about currently available meeting times using the supplied availability data.",
+  "You cannot create, cancel, or modify bookings, inspect private data, access accounts, or perform actions.",
   "Never claim to have taken an action or accessed a private system.",
 ].join(" ");
 
@@ -59,8 +63,50 @@ function outputText(data: any): string | undefined {
   return undefined;
 }
 
-async function answer(message: string, env: Env): Promise<string> {
+function validTimezone(timezone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function currentDate(timezone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function addDays(date: string, days: number): string {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+async function loadAvailability(timezone: string, env: Env): Promise<string> {
+  if (!env.BOOKING_AVAILABILITY_URL) throw new Error("BOOKING_AVAILABILITY_URL is not configured");
+  const from = currentDate(timezone);
+  const url = new URL(env.BOOKING_AVAILABILITY_URL);
+  url.searchParams.set("from", from);
+  url.searchParams.set("to", addDays(from, 13));
+  url.searchParams.set("timezone", timezone);
+
+  const response = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error(`Availability request failed with status ${response.status}`);
+  const body = await response.text();
+  if (body.length > 100_000) throw new Error("Availability response is too large");
+  return body;
+}
+
+async function answer(message: string, timezone: string, env: Env): Promise<string> {
   if (!env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not configured");
+  const availability = await loadAvailability(timezone, env);
 
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -72,7 +118,10 @@ async function answer(message: string, env: Env): Promise<string> {
       model: env.OPENAI_MODEL || "gpt-5.6-terra",
       input: [{
         role: "user",
-        content: [{ type: "input_text", text: `${SYSTEM_PROMPT}\n\nVisitor message: ${message}` }],
+        content: [{
+          type: "input_text",
+          text: `${SYSTEM_PROMPT}\n\nVisitor timezone: ${timezone}\nCurrent visitor date: ${currentDate(timezone)}\n\nRead-only availability JSON for the next 14 days:\n${availability}\n\nVisitor message: ${message}`,
+        }],
       }],
       max_output_tokens: 500,
     }),
@@ -104,13 +153,18 @@ export default {
       return json({ error: "Request body must be JSON" }, 400, origin);
     }
     const message = (body as { message?: unknown })?.message;
+    const requestedTimezone = (body as { timezone?: unknown })?.timezone;
+    const timezone = typeof requestedTimezone === "undefined" ? DEFAULT_TIMEZONE : requestedTimezone;
     if (typeof message !== "string" || !message.trim() || message.length > MAX_MESSAGE_LENGTH) {
       return json({ error: `message is required and must be at most ${MAX_MESSAGE_LENGTH} characters` }, 400, origin);
+    }
+    if (typeof timezone !== "string" || timezone.length > MAX_TIMEZONE_LENGTH || !validTimezone(timezone)) {
+      return json({ error: "timezone must be a valid IANA timezone" }, 400, origin);
     }
 
     console.log(JSON.stringify({ event: "public_chat_request", messageLength: message.length }));
     try {
-      return json({ message: await answer(message.trim(), env) }, 200, origin);
+      return json({ message: await answer(message.trim(), timezone, env) }, 200, origin);
     } catch (error) {
       console.error(JSON.stringify({ event: "public_chat_error", reason: error instanceof Error ? error.message : "unknown" }));
       return json({ error: "The chat is temporarily unavailable" }, 503, origin);
