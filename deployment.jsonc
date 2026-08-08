@@ -49,7 +49,7 @@
 
     // null: Wrangler provisions and remembers a KV namespace on first deploy.
     // string: bind an existing namespace by ID.
-    "kvNamespaceId": null
+    "kvNamespaceId": "896a016a4a42414192866527a6f94463"
   },
 
   // Displayed to agents when the example custom integration is enabled in /admin.
@@ -71,8 +71,8 @@
   // null values use Wrangler automatic provisioning. Set IDs/names to reuse owned resources.
   // https://developers.cloudflare.com/workers/wrangler/configuration/#automatic-provisioning
   "resources": {
-    "blueprintsKvNamespaceId": null,
-    "avatarsKvNamespaceId": null,
+    "blueprintsKvNamespaceId": "3e76d61b3ac441fd97c12e1c9015238e",
+    "avatarsKvNamespaceId": "98bb36c76c544cfe8b5f63522abf1d67",
     "blueprintContentBucket": null
   },
 
