@@ -33,6 +33,25 @@ Fix:
 
 R2 must be enabled before Wrangler can create the blueprint-content bucket. Do not create an AWS S3 or ECR resource for this error.
 
+## Dynamic Workers require a paid Workers plan
+
+Error:
+
+```text
+In order to use Dynamic Workers, you must switch to a paid plan. [code: 10195]
+```
+
+Cloudflare OS uses Dynamic Workers and a Worker Loader to run sandboxed gadgets. Dynamic Workers are not available on the Workers Free plan.
+
+Fix:
+
+1. Open **Workers & Pages → Plans** in the Cloudflare dashboard.
+2. Switch this account to the **Workers Paid** plan.
+3. Confirm the subscription.
+4. Rerun the GitHub Actions deployment.
+
+The Workers Paid plan is separate from the Cloudflare domain plan, Zero Trust plan, and R2 subscription. Cloudflare currently documents a $5/month minimum Workers Paid subscription, with additional usage-based charges beyond the included usage. If the paid plan is not acceptable, Cloudflare OS can be run locally for evaluation, but the production deployment in this repository cannot use the Workers Free plan.
+
 ## KV namespace already exists
 
 Error:
