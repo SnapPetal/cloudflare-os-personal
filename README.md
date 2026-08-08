@@ -28,6 +28,23 @@
 
 [Deploy](#deploy), [Customization](#customization), and [Troubleshooting](TROUBLESHOOTING.md) expand each step. Everything else on this page is optional reading.
 
+## Personal deployment checklist
+
+Before deploying this repository, complete these account-level setup steps:
+
+- [ ] Cloudflare Zero Trust organization created; record the team domain.
+- [ ] Zero Trust plan selected. The Free plan is sufficient for Access.
+- [ ] Workers **Paid** plan enabled for this account. Cloudflare OS uses Dynamic Workers, which are not available on Workers Free.
+- [ ] R2 enabled under **Storage & databases → R2 → Overview**.
+- [ ] Access application created as **Self-hosted and private** for `os.thonbecker.biz`.
+- [ ] Access policy allows the administrator email.
+- [ ] Access issuer, AUD tag, and administrator email configured in `deployment.jsonc`.
+- [ ] Existing KV namespace IDs are configured if a previous partial deployment created them.
+- [ ] A Cloudflare API token is stored in the GitHub repository as `CLOUDFLARE_API_TOKEN`.
+- [ ] The Cloudflare Workers & Pages GitHub build integration is disconnected. It runs `npx wrangler deploy`, which is incorrect for this multi-Worker repository.
+
+The production deployment is performed by GitHub Actions from `main`. Open **Actions → Deploy Cloudflare OS → Run workflow** after completing the checklist.
+
 ## Overview
 
 This repository adds deployment controls around a pinned [Cloudflare OS](https://github.com/cloudflare/cloudflare-os) release without modifying the upstream source.
@@ -90,6 +107,8 @@ The hostname belongs to the router, the only Worker here with a public route. Wr
 pnpm check
 pnpm deploy
 ```
+
+For production, use the checked-in [GitHub Actions workflow](.github/workflows/deploy.yml). It checks out the `cloudflare-os` submodule, installs both dependency trees, runs `pnpm check`, and then runs `pnpm deploy`. Do not replace it with the Cloudflare dashboard's generic `npx wrangler deploy` command.
 
 With resource values left as `null`, Wrangler creates the three KV namespaces and R2 bucket automatically and reconnects them on later deploys. Set explicit IDs or a bucket name when the deployment must reuse existing resources.
 

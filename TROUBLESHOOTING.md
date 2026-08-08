@@ -2,6 +2,30 @@
 
 This repository deploys Cloudflare OS as several Workers plus KV, R2, Browser Rendering, and Worker Loader resources. It is not a single static Worker.
 
+## Known-good production setup
+
+The intended setup is:
+
+```text
+GitHub main
+  → GitHub Actions: .github/workflows/deploy.yml
+      → pnpm check
+      → pnpm deploy
+          → Error Reporter, Gatekeepers, Context, Workshop, KV, and R2
+```
+
+Before troubleshooting a deployment, confirm:
+
+- the account has the **Workers Paid** plan enabled;
+- R2 is enabled;
+- the Zero Trust organization and Access application exist;
+- `os.thonbecker.biz` is the Access-protected hostname;
+- `deployment.jsonc` contains the team issuer, AUD tag, administrator email, and existing KV IDs;
+- `CLOUDFLARE_API_TOKEN` exists as a GitHub Actions repository secret;
+- the Cloudflare dashboard GitHub build integration is disconnected.
+
+The Cloudflare dashboard's generic GitHub build flow is not the production deployment mechanism for this repository.
+
 ## Deployment method
 
 Use the repository deployment script:
