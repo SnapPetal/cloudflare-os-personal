@@ -26,7 +26,7 @@
 3. Run `pnpm check`, then `pnpm deploy`.
 4. Open `/admin` and set the site name, logo, and accent color; branding needs no redeploy.
 
-[Deploy](#deploy) and [Customization](#customization) expand each step. Everything else on this page is optional reading.
+[Deploy](#deploy), [Customization](#customization), and [Troubleshooting](TROUBLESHOOTING.md) expand each step. Everything else on this page is optional reading.
 
 ## Overview
 
@@ -120,6 +120,8 @@ Backend error reporting is enabled without a vendor account. Explicit upstream i
 | Product behavior unavailable through Worker boundaries | Pinned upstream fork/commit | Yes |
 
 The complete control reference and recipes live in [Customization](docs/customization.md). The upstream [`write-gatekeeper` skill](https://github.com/cloudflare/cloudflare-os/blob/main/.agents/skills/write-gatekeeper/SKILL.md) covers richer integrations.
+
+If deployment or dashboard setup fails, see [Troubleshooting](TROUBLESHOOTING.md).
 
 ## Operations and upgrades
 
