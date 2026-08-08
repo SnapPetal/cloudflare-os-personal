@@ -8,6 +8,7 @@ const validConfig = {
   accountId: "0123456789abcdef0123456789abcdef",
   workers: {
     workshop: { name: "acme-cloudflare-os", route: { customDomain: "os.example.com" } },
+    publicChat: { name: "acme-public-chat", route: { customDomain: "chat.example.com" } },
     context: { name: "acme-cloudflare-os-context" },
     customGatekeeper: { name: "acme-cloudflare-os-custom" },
     errorReporter: { name: "acme-cloudflare-os-errors" },
@@ -43,6 +44,7 @@ const validConfig = {
 async function baseConfigs() {
   return {
     workshop: await baseConfig("../cloudflare-os/packages/workshop-backend/wrangler.jsonc"),
+    publicChat: await baseConfig("../packages/public-chat/wrangler.jsonc"),
     context: await baseConfig("../cloudflare-os/packages/gatekeeper-context/wrangler.jsonc"),
     customGatekeeper: await baseConfig("../packages/custom-gatekeeper/wrangler.jsonc"),
     errorReporter: {
@@ -144,6 +146,12 @@ test("generates Access-mode Workshop, Context, and custom Gatekeeper configs", a
   ]);
   assert.equal(generated.workshop.r2_buckets[0].bucket_name, "cloudflare-os-blueprints");
   assert.equal(generated.context.name, "acme-cloudflare-os-context");
+  assert.equal(generated.publicChat.name, "acme-public-chat");
+  assert.deepEqual(generated.publicChat.routes, [
+    { pattern: "chat.example.com", custom_domain: true },
+  ]);
+  assert.deepEqual(generated.publicChat.vars, { OPENAI_MODEL: "gpt-5.6-terra" });
+  assert.deepEqual(generated.publicChat.secrets, { required: ["OPENAI_API_KEY"] });
   assert.equal(generated.context.kv_namespaces[0].id, "context-kv-id");
   assert.equal(generated.customGatekeeper.name, "acme-cloudflare-os-custom");
   assert.deepEqual(generated.customGatekeeper.vars, {

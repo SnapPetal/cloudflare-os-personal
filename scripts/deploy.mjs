@@ -10,6 +10,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const generatedName = "wrangler.prod.jsonc";
 const generatedPaths = {
   workshop: join(root, "cloudflare-os/packages/workshop-backend", generatedName),
+  publicChat: join(root, "packages/public-chat", generatedName),
   context: join(root, "cloudflare-os/packages/gatekeeper-context", generatedName),
   customGatekeeper: join(root, "packages/custom-gatekeeper", generatedName),
   errorReporter: join(root, "packages/error-reporter", generatedName),
@@ -18,6 +19,7 @@ const generatedPaths = {
 const requiredPaths = [
   "accountId",
   "workers.workshop.name",
+  "workers.publicChat.name",
   "workers.context.name",
   "workers.customGatekeeper.name",
   "access.issuer",
@@ -121,25 +123,26 @@ export function validateConfig(config) {
     .filter(([key]) => key !== "errorReporter" || config.errorReporting.enabled)
     .map(([, worker]) => worker.name);
   if (new Set(workerNames).size !== workerNames.length) {
-    throw new Error("Workshop, Context, and custom Gatekeeper Worker names must be unique.");
+    throw new Error("Worker names must be unique.");
   }
   if (!workerNames.every((name) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(name))) {
     throw new Error("Worker names must use lowercase letters, numbers, and hyphens.");
   }
 
-  const route = config.workers.workshop.route;
-  if (!route || Boolean(route.workersDev) === Boolean(route.customDomain)) {
-    throw new Error("Set exactly one Workshop route: workersDev or customDomain.");
-  }
-  if (route.workersDev !== undefined && route.workersDev !== true) {
-    throw new Error("Workshop workersDev must be boolean true when selected.");
-  }
-  if (route.customDomain !== undefined && typeof route.customDomain !== "string") {
-    throw new Error("Workshop customDomain must be a string.");
-  }
   const hostnamePattern = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-  if (route.customDomain && !hostnamePattern.test(route.customDomain)) {
-    throw new Error("Workshop customDomain must be a lowercase hostname.");
+  for (const [workerType, route] of [["Workshop", config.workers.workshop.route], ["Public chat", config.workers.publicChat.route]]) {
+    if (!route || Boolean(route.workersDev) === Boolean(route.customDomain)) {
+      throw new Error(`Set exactly one ${workerType} route: workersDev or customDomain.`);
+    }
+    if (route.workersDev !== undefined && route.workersDev !== true) {
+      throw new Error(`${workerType} workersDev must be boolean true when selected.`);
+    }
+    if (route.customDomain !== undefined && typeof route.customDomain !== "string") {
+      throw new Error(`${workerType} customDomain must be a string.`);
+    }
+    if (route.customDomain && !hostnamePattern.test(route.customDomain)) {
+      throw new Error(`${workerType} customDomain must be a lowercase hostname.`);
+    }
   }
 
   const issuer = new URL(config.access.issuer);
@@ -234,6 +237,7 @@ export function generateConfigs(config, bases) {
   validateConfig(config);
   const workshop = structuredClone(bases.workshop);
   const context = structuredClone(bases.context);
+  const publicChat = structuredClone(bases.publicChat);
   const customGatekeeper = structuredClone(bases.customGatekeeper);
   const errorReporter = config.errorReporting.enabled
     ? structuredClone(bases.errorReporter)
@@ -320,7 +324,16 @@ export function generateConfigs(config, bases) {
     setCommon(errorReporter, config, config.workers.errorReporter.name);
   }
 
-  return { workshop, context, customGatekeeper, ...(errorReporter && { errorReporter }) };
+  setCommon(publicChat, config, config.workers.publicChat.name, config.workers.publicChat.route);
+  publicChat.vars = {
+    OPENAI_MODEL: "gpt-5.6-terra",
+  };
+  publicChat.secrets = {
+    ...publicChat.secrets,
+    required: [...new Set([...(publicChat.secrets?.required ?? []), "OPENAI_API_KEY"])],
+  };
+
+  return { workshop, publicChat, context, customGatekeeper, ...(errorReporter && { errorReporter }) };
 }
 
 async function readJsonc(path) {
@@ -361,6 +374,7 @@ function requireSubmodule() {
 function build(config) {
   run(["--dir", "cloudflare-os", "--filter", "@gadgets/gatekeeper-context", "build"]);
   run(["--dir", "packages/custom-gatekeeper", "run", "build"]);
+  run(["--dir", "packages/public-chat", "run", "types:check"]);
   if (config.errorReporting.enabled) {
     run(["--dir", "packages/error-reporter", "run", "build"]);
   }
@@ -376,6 +390,7 @@ async function main() {
   const config = await readDeployment(join(root, "deployment.jsonc"));
   const generated = generateConfigs(config, {
     workshop: await readJsonc(join(root, "cloudflare-os/packages/workshop-backend/wrangler.jsonc")),
+    publicChat: await readJsonc(join(root, "packages/public-chat/wrangler.jsonc")),
     context: await readJsonc(join(root, "cloudflare-os/packages/gatekeeper-context/wrangler.jsonc")),
     customGatekeeper: await readJsonc(join(root, "packages/custom-gatekeeper/wrangler.jsonc")),
     errorReporter: await readJsonc(join(root, "packages/error-reporter/wrangler.jsonc")),
@@ -393,6 +408,8 @@ async function main() {
       run(["exec", "wrangler", "deploy", "--config", generatedName, ...deployArgs],
         join(root, "packages/error-reporter"));
     }
+    run(["exec", "wrangler", "deploy", "--config", generatedName, ...deployArgs],
+      join(root, "packages/public-chat"));
     run(["exec", "wrangler", "deploy", "--config", generatedName, ...deployArgs],
       join(root, "cloudflare-os/packages/gatekeeper-context"));
     run(["exec", "wrangler", "deploy", "--config", generatedName, ...deployArgs],

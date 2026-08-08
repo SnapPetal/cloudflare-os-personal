@@ -14,6 +14,10 @@
       // https://developers.cloudflare.com/workers/configuration/routing/custom-domains/
       "route": { "customDomain": "os.thonbecker.biz" }
     },
+    "publicChat": {
+      "name": "thonbecker-public-chat",
+      "route": { "customDomain": "chat.thonbecker.biz" }
+    },
     "context": { "name": "thonbecker-personal-os-context" },
     "customGatekeeper": { "name": "thonbecker-personal-os-gatekeeper" },
     "errorReporter": { "name": "thonbecker-personal-os-errors" }
