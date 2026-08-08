@@ -1,0 +1,49 @@
+name: Deploy Cloudflare OS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-os-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository and Cloudflare OS submodule
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install deployment wrapper dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Cloudflare OS dependencies
+        run: pnpm --dir cloudflare-os install --frozen-lockfile
+
+      - name: Validate deployment
+        run: pnpm check
+
+      - name: Deploy Workers and bindings
+        run: pnpm deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
