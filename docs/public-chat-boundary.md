@@ -42,7 +42,7 @@ not the chosen implementation for this experiment.
 ## Deployment and secret setup
 
 The repository deployment script deploys this Worker separately as `thonbecker-public-chat` at
-`chat.thonbecker.biz`. It requires one Wrangler secret; the secret is never committed:
+`chat.thonbecker.biz`. Deploy the Worker first, then add one Wrangler secret; the secret is never committed:
 
 ```bash
 pnpm exec wrangler secret put OPENAI_API_KEY --name thonbecker-public-chat
