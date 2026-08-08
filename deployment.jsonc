@@ -25,6 +25,10 @@
     },
     // The Workshop backend. No public route: the router reaches it over a service binding.
     "workshop": { "name": "thonbecker-personal-os" },
+    "publicChat": {
+      "name": "thonbecker-public-chat",
+      "route": { "customDomain": "chat.thonbecker.biz" }
+    },
     "context": { "name": "thonbecker-personal-os-context" },
 
     // The Scheduler Gatekeeper, which gives agents scheduled and recurring work. Ambient like
