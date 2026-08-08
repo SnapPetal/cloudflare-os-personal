@@ -1,0 +1,61 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error"
+  },
+  "plugins": ["typescript", "unicorn", "oxc", "import"],
+  "env": {
+    "es2024": true
+  },
+  "rules": {
+    "import/default": "off",
+    "import/no-unassigned-import": "off",
+    "unicorn/no-empty-file": "off",
+    "no-underscore-dangle": "off",
+    "no-unused-vars": [
+      "error",
+      {
+        "args": "none",
+        "caughtErrors": "none",
+        "varsIgnorePattern": "^_",
+        "ignoreRestSiblings": true
+      }
+    ],
+    "no-shadow": "warn",
+    "typescript/no-this-alias": "warn",
+    "typescript/no-extraneous-class": "warn",
+    "unicorn/consistent-function-scoping": "warn"
+  },
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/generated/**",
+    "**/*.gen.ts",
+    "**/node_modules/**",
+    "**/.wrangler/**",
+    "**/worker-configuration.d.ts"
+  ],
+  "overrides": [
+    {
+      "files": ["packages/**/*.ts", "packages/**/*.tsx"],
+      "env": {
+        "serviceworker": true,
+        "es2024": true
+      }
+    },
+    {
+      "files": ["packages/**/*.test.ts", "packages/**/*.test.tsx", "packages/**/vitest.config.ts"],
+      "env": {
+        "vitest": true,
+        "es2024": true
+      }
+    },
+    {
+      "files": ["scripts/**/*.mjs"],
+      "env": {
+        "node": true,
+        "es2024": true
+      }
+    }
+  ]
+}

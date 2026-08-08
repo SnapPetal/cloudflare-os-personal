@@ -40,6 +40,12 @@ jobs:
       - name: Install Cloudflare OS dependencies
         run: pnpm --dir cloudflare-os install --frozen-lockfile
 
+      - name: Lint repository and upstream code
+        run: pnpm lint
+
+      - name: Type-check wrapper packages
+        run: pnpm types:check
+
       - name: Validate deployment
         run: pnpm check
 

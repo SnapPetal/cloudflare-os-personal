@@ -26,11 +26,11 @@ const SYSTEM_PROMPT = [
 ].join(" ");
 
 function corsHeaders(origin: string | null): HeadersInit {
-  const allowedOrigin = origin && ALLOWED_ORIGINS.has(origin) ? origin : "https://thonbecker.biz";
+  const corsOrigin = origin && ALLOWED_ORIGINS.has(origin) ? origin : "https://thonbecker.biz";
   return {
     "Access-Control-Allow-Headers": "content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Origin": corsOrigin,
     "Content-Type": "application/json; charset=utf-8",
     "Vary": "Origin",
   };

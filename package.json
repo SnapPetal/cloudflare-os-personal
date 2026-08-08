@@ -14,7 +14,10 @@
     "lint:fix": "vp lint --fix",
     "lint": "pnpm run lint:check && pnpm run types:scripts && pnpm run build",
     "check": "node scripts/deploy.ts --check",
-    "deploy": "node scripts/deploy.ts"
+    "deploy": "node scripts/deploy.ts",
+    "lint:custom": "oxlint scripts packages",
+    "lint:custom:fix": "oxlint --fix scripts packages",
+    "types:check": "pnpm --filter custom-gatekeeper types:check && pnpm --filter error-reporter types:check && pnpm --filter public-chat types:check && pnpm --filter s3v-explorer types:check"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "catalog:",
@@ -23,6 +26,7 @@
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:",
-    "wrangler": "catalog:"
+    "wrangler": "catalog:",
+    "oxlint": "1.76.0",
   }
 }
