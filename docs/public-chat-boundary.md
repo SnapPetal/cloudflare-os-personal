@@ -20,7 +20,8 @@ Access protection, or make its admin and Gatekeeper UI public just to support th
 
 ## Initial scope
 
-- General questions about Thon's public work, projects, and services
+- Questions about available meeting times
+- No technology, infrastructure, or implementation discussion
 - No booking records or booking creation; read-only availability may be supplied in the visitor's timezone
 - No database, AWS, Nextcloud, or private-file access
 - No API key in browser code, HTML, GitHub, or tracked configuration
