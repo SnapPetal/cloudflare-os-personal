@@ -106,7 +106,7 @@
   "resources": {
     "blueprintsKvNamespaceId": "3e76d61b3ac441fd97c12e1c9015238e",
     "avatarsKvNamespaceId": "98bb36c76c544cfe8b5f63522abf1d67",
-    "blueprintContentBucket": null
+    "blueprintContentBucket": "thonbecker-personal-os-blueprint-content"
   },
 
   // Structured custom logs stay enabled. Invocation logs and traces are separate volume controls.
