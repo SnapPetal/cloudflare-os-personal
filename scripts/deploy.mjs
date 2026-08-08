@@ -328,10 +328,6 @@ export function generateConfigs(config, bases) {
   publicChat.vars = {
     OPENAI_MODEL: "gpt-5.6-terra",
   };
-  publicChat.secrets = {
-    ...publicChat.secrets,
-    required: [...new Set([...(publicChat.secrets?.required ?? []), "OPENAI_API_KEY"])],
-  };
 
   return { workshop, publicChat, context, customGatekeeper, ...(errorReporter && { errorReporter }) };
 }

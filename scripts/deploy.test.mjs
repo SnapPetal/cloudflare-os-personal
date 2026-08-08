@@ -151,7 +151,7 @@ test("generates Access-mode Workshop, Context, and custom Gatekeeper configs", a
     { pattern: "chat.example.com", custom_domain: true },
   ]);
   assert.deepEqual(generated.publicChat.vars, { OPENAI_MODEL: "gpt-5.6-terra" });
-  assert.deepEqual(generated.publicChat.secrets, { required: ["OPENAI_API_KEY"] });
+  assert.equal(generated.publicChat.secrets, undefined);
   assert.equal(generated.context.kv_namespaces[0].id, "context-kv-id");
   assert.equal(generated.customGatekeeper.name, "acme-cloudflare-os-custom");
   assert.deepEqual(generated.customGatekeeper.vars, {
