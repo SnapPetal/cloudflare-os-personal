@@ -35,10 +35,11 @@ not the chosen implementation for this experiment.
 ## Before deployment
 
 1. Remove or leave disabled any uncommitted Spring AI chat implementation in PersonalWeb.
-2. Build the public Worker in the `cloudflare-os-personal` repository.
-3. Test the Worker with a dedicated restricted OpenAI project/key.
-4. Add the widget to the website only after the Worker passes secret-leak and abuse checks.
-5. Keep Cloudflare OS Access-protected throughout the experiment.
+2. Deploy PersonalWeb so `/booking/api/availability` exists before updating the Worker.
+3. Build the public Worker in the `cloudflare-os-personal` repository.
+4. Test the Worker with a dedicated restricted OpenAI project/key.
+5. Add the widget to the website only after the Worker passes secret-leak and abuse checks.
+6. Keep Cloudflare OS Access-protected throughout the experiment.
 
 ## Deployment and secret setup
 
