@@ -139,10 +139,18 @@ If deployment or dashboard setup fails, see [Troubleshooting](TROUBLESHOOTING.md
 
 The public website chat experiment must **not** be implemented with PersonalWeb Spring AI and must not
 expose the Cloudflare OS Workshop directly. Cloudflare OS remains a private, Access-protected learning and
-operations workspace at `os.thonbecker.biz`. The public website widget will use a separate, narrowly scoped
-Cloudflare Worker that calls OpenAI server-side and records only safe usage metrics. It may receive
-read-only availability from a narrow PersonalWeb endpoint, but must not access booking records, booking
-actions, the PersonalWeb database, AWS credentials, or Cloudflare OS administration.
+operations workspace at `os.thonbecker.biz`. The public website widget uses a separate, narrowly scoped
+Cloudflare Worker for booking availability. It calls OpenAI server-side and receives only read-only
+availability from a narrow PersonalWeb endpoint. It must not access booking records, booking actions, the
+PersonalWeb database, AWS credentials, or Cloudflare OS administration. The visitor's IANA timezone is
+sent with each request; `America/Chicago` is the fallback.
+
+The public Worker is `thonbecker-public-chat` at `chat.thonbecker.biz`. Attach its secret after the Worker
+has been deployed:
+
+```bash
+pnpm exec wrangler secret put OPENAI_API_KEY --name thonbecker-public-chat
+```
 
 ## Operations and upgrades
 
