@@ -11,6 +11,7 @@ const generatedName = "wrangler.prod.jsonc";
 const generatedPaths = {
   workshop: join(root, "cloudflare-os/packages/workshop-backend", generatedName),
   publicChat: join(root, "packages/public-chat", generatedName),
+  s3vExplorer: join(root, "packages/s3v-explorer", generatedName),
   context: join(root, "cloudflare-os/packages/gatekeeper-context", generatedName),
   customGatekeeper: join(root, "packages/custom-gatekeeper", generatedName),
   errorReporter: join(root, "packages/error-reporter", generatedName),
@@ -20,6 +21,7 @@ const requiredPaths = [
   "accountId",
   "workers.workshop.name",
   "workers.publicChat.name",
+  "workers.s3vExplorer.name",
   "workers.context.name",
   "workers.customGatekeeper.name",
   "access.issuer",
@@ -28,6 +30,8 @@ const requiredPaths = [
   "aiGateway.enabled",
   "errorReporting.enabled",
   "context.sharingDomain",
+  "s3vExplorer.region",
+  "s3vExplorer.vectorBucketName",
   "customGatekeeper.name",
   "customGatekeeper.message",
   "observability.enabled",
@@ -130,7 +134,11 @@ export function validateConfig(config) {
   }
 
   const hostnamePattern = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-  for (const [workerType, route] of [["Workshop", config.workers.workshop.route], ["Public chat", config.workers.publicChat.route]]) {
+  for (const [workerType, route] of [
+    ["Workshop", config.workers.workshop.route],
+    ["Public chat", config.workers.publicChat.route],
+    ["S3V Explorer", config.workers.s3vExplorer.route],
+  ]) {
     if (!route || Boolean(route.workersDev) === Boolean(route.customDomain)) {
       throw new Error(`Set exactly one ${workerType} route: workersDev or customDomain.`);
     }
@@ -238,6 +246,7 @@ export function generateConfigs(config, bases) {
   const workshop = structuredClone(bases.workshop);
   const context = structuredClone(bases.context);
   const publicChat = structuredClone(bases.publicChat);
+  const s3vExplorer = structuredClone(bases.s3vExplorer);
   const customGatekeeper = structuredClone(bases.customGatekeeper);
   const errorReporter = config.errorReporting.enabled
     ? structuredClone(bases.errorReporter)
@@ -330,7 +339,20 @@ export function generateConfigs(config, bases) {
     BOOKING_AVAILABILITY_URL: "https://booking.thonbecker.biz/booking/api/availability",
   };
 
-  return { workshop, publicChat, context, customGatekeeper, ...(errorReporter && { errorReporter }) };
+  setCommon(s3vExplorer, config, config.workers.s3vExplorer.name, config.workers.s3vExplorer.route);
+  s3vExplorer.vars = {
+    AWS_REGION: config.s3vExplorer.region,
+    VECTOR_BUCKET_NAME: config.s3vExplorer.vectorBucketName,
+  };
+
+  return {
+    workshop,
+    publicChat,
+    s3vExplorer,
+    context,
+    customGatekeeper,
+    ...(errorReporter && { errorReporter }),
+  };
 }
 
 async function readJsonc(path) {
@@ -372,6 +394,7 @@ function build(config) {
   run(["--dir", "cloudflare-os", "--filter", "@gadgets/gatekeeper-context", "build"]);
   run(["--dir", "packages/custom-gatekeeper", "run", "build"]);
   run(["--dir", "packages/public-chat", "run", "types:check"]);
+  run(["--dir", "packages/s3v-explorer", "run", "types:check"]);
   if (config.errorReporting.enabled) {
     run(["--dir", "packages/error-reporter", "run", "build"]);
   }
@@ -388,6 +411,7 @@ async function main() {
   const generated = generateConfigs(config, {
     workshop: await readJsonc(join(root, "cloudflare-os/packages/workshop-backend/wrangler.jsonc")),
     publicChat: await readJsonc(join(root, "packages/public-chat/wrangler.jsonc")),
+    s3vExplorer: await readJsonc(join(root, "packages/s3v-explorer/wrangler.jsonc")),
     context: await readJsonc(join(root, "cloudflare-os/packages/gatekeeper-context/wrangler.jsonc")),
     customGatekeeper: await readJsonc(join(root, "packages/custom-gatekeeper/wrangler.jsonc")),
     errorReporter: await readJsonc(join(root, "packages/error-reporter/wrangler.jsonc")),
@@ -407,6 +431,8 @@ async function main() {
     }
     run(["exec", "wrangler", "deploy", "--config", generatedName, ...deployArgs],
       join(root, "packages/public-chat"));
+    run(["exec", "wrangler", "deploy", "--config", generatedName, ...deployArgs],
+      join(root, "packages/s3v-explorer"));
     run(["exec", "wrangler", "deploy", "--config", generatedName, ...deployArgs],
       join(root, "cloudflare-os/packages/gatekeeper-context"));
     run(["exec", "wrangler", "deploy", "--config", generatedName, ...deployArgs],

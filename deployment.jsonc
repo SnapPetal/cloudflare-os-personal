@@ -18,6 +18,10 @@
       "name": "thonbecker-public-chat",
       "route": { "customDomain": "chat.thonbecker.biz" }
     },
+    "s3vExplorer": {
+      "name": "s3v-explorer",
+      "route": { "customDomain": "vectors.thonbecker.biz" }
+    },
     "context": { "name": "thonbecker-personal-os-context" },
     "customGatekeeper": { "name": "thonbecker-personal-os-gatekeeper" },
     "errorReporter": { "name": "thonbecker-personal-os-errors" }
@@ -54,6 +58,13 @@
     // null: Wrangler provisions and remembers a KV namespace on first deploy.
     // string: bind an existing namespace by ID.
     "kvNamespaceId": "896a016a4a42414192866527a6f94463"
+  },
+
+  // The viewer's data plane remains Amazon S3 Vectors. AWS credentials are Worker secrets,
+  // never values in this file. The bucket is intentionally fixed by the Worker at runtime.
+  "s3vExplorer": {
+    "region": "us-east-1",
+    "vectorBucketName": "thonbecker-vectors"
   },
 
   // Displayed to agents when the example custom integration is enabled in /admin.

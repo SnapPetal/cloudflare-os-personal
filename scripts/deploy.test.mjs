@@ -9,6 +9,7 @@ const validConfig = {
   workers: {
     workshop: { name: "acme-cloudflare-os", route: { customDomain: "os.example.com" } },
     publicChat: { name: "acme-public-chat", route: { customDomain: "chat.example.com" } },
+    s3vExplorer: { name: "s3v-explorer", route: { customDomain: "vectors.example.com" } },
     context: { name: "acme-cloudflare-os-context" },
     customGatekeeper: { name: "acme-cloudflare-os-custom" },
     errorReporter: { name: "acme-cloudflare-os-errors" },
@@ -26,6 +27,7 @@ const validConfig = {
     workersAi: { mode: "gateway", gateway: "cloudflare-os-workers-ai" },
   },
   context: { sharingDomain: "production", kvNamespaceId: "context-kv-id" },
+  s3vExplorer: { region: "us-east-1", vectorBucketName: "acme-vectors" },
   customGatekeeper: { name: "Acme", message: "Use the company handbook." },
   errorReporting: { enabled: true, environment: "production", release: "abc123" },
   resources: {
@@ -45,6 +47,7 @@ async function baseConfigs() {
   return {
     workshop: await baseConfig("../cloudflare-os/packages/workshop-backend/wrangler.jsonc"),
     publicChat: await baseConfig("../packages/public-chat/wrangler.jsonc"),
+    s3vExplorer: await baseConfig("../packages/s3v-explorer/wrangler.jsonc"),
     context: await baseConfig("../cloudflare-os/packages/gatekeeper-context/wrangler.jsonc"),
     customGatekeeper: await baseConfig("../packages/custom-gatekeeper/wrangler.jsonc"),
     errorReporter: {
@@ -155,6 +158,14 @@ test("generates Access-mode Workshop, Context, and custom Gatekeeper configs", a
     BOOKING_AVAILABILITY_URL: "https://booking.thonbecker.biz/booking/api/availability",
   });
   assert.equal(generated.publicChat.secrets, undefined);
+  assert.equal(generated.s3vExplorer.name, "s3v-explorer");
+  assert.deepEqual(generated.s3vExplorer.routes, [
+    { pattern: "vectors.example.com", custom_domain: true },
+  ]);
+  assert.deepEqual(generated.s3vExplorer.vars, {
+    AWS_REGION: "us-east-1",
+    VECTOR_BUCKET_NAME: "acme-vectors",
+  });
   assert.equal(generated.context.kv_namespaces[0].id, "context-kv-id");
   assert.equal(generated.customGatekeeper.name, "acme-cloudflare-os-custom");
   assert.deepEqual(generated.customGatekeeper.vars, {
