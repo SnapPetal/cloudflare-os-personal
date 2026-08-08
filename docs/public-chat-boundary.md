@@ -21,7 +21,7 @@ Access protection, or make its admin and Gatekeeper UI public just to support th
 ## Initial scope
 
 - General questions about Thon's public work, projects, and services
-- No booking lookup or booking creation
+- No booking records or booking creation; read-only availability may be supplied in the visitor's timezone
 - No database, AWS, Nextcloud, or private-file access
 - No API key in browser code, HTML, GitHub, or tracked configuration
 - Basic request size, abuse, and cost controls
@@ -56,3 +56,5 @@ can be changed in `scripts/deploy.mjs` if the account uses a different model nam
 The first rate limit is intentionally best-effort per Worker instance: 10 requests per IP per 10 minutes.
 Cloudflare Logs/analytics record request events without message text. If usage grows, move the limit to a
 Cloudflare Rate Limiting rule or Durable Object before adding richer features.
+
+Timezone defaults to `America/Chicago`; the widget sends the visitor's browser IANA timezone when available.

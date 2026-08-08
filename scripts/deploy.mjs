@@ -327,6 +327,7 @@ export function generateConfigs(config, bases) {
   setCommon(publicChat, config, config.workers.publicChat.name, config.workers.publicChat.route);
   publicChat.vars = {
     OPENAI_MODEL: "gpt-5.6-terra",
+    BOOKING_AVAILABILITY_URL: "https://booking.thonbecker.biz/booking/api/availability",
   };
 
   return { workshop, publicChat, context, customGatekeeper, ...(errorReporter && { errorReporter }) };
