@@ -5,12 +5,20 @@
   "packageManager": "pnpm@11.9.0",
   "scripts": {
     "test": "node --test scripts/*.test.mjs && pnpm --filter custom-gatekeeper test && pnpm --filter error-reporter test && pnpm --filter s3v-explorer types:check",
+    "lint:custom": "oxlint scripts packages",
+    "lint:custom:fix": "oxlint --fix scripts packages",
+    "lint:upstream": "pnpm --dir cloudflare-os lint:check",
+    "lint:upstream:fix": "pnpm --dir cloudflare-os lint:fix",
+    "lint": "pnpm run lint:custom && pnpm run lint:upstream",
+    "lint:fix": "pnpm run lint:custom:fix && pnpm run lint:upstream:fix",
+    "types:check": "pnpm --filter custom-gatekeeper types:check && pnpm --filter error-reporter types:check && pnpm --filter public-chat types:check && pnpm --filter s3v-explorer types:check",
     "check": "node scripts/deploy.mjs --check",
     "deploy": "node scripts/deploy.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.20.1",
     "jsonc-parser": "^3.3.1",
+    "oxlint": "1.76.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10",
     "wrangler": "^4.115.0"

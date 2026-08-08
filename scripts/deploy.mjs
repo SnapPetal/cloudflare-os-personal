@@ -371,7 +371,7 @@ async function readDeployment(path) {
   try {
     return validateConfig(config);
   } catch (error) {
-    throw new Error(`${relative(root, path)}: ${error.message}`);
+    throw new Error(`${relative(root, path)}: ${error.message}`, { cause: error });
   }
 }
 
