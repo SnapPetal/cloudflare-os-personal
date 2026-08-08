@@ -21,7 +21,7 @@
 
 ## Four steps
 
-1. Install the dependencies and run `pnpm exec wrangler login`.
+1. Run `mise install`, install the dependencies, and run `mise exec -- pnpm exec wrangler login`.
 2. Fill in `deployment.jsonc`: account ID, Worker names, hostname, Access audience, admin emails.
 3. Run `pnpm check`, then `pnpm deploy`.
 4. Open `/admin` and set the site name, logo, and accent color; branding needs no redeploy.
@@ -79,13 +79,14 @@ Anything past that needs your own code or settings, which is what this repositor
 
 ### 1. Prepare the workspace
 
-Install [Node.js 24.19 or newer](https://nodejs.org/) (the deploy scripts are TypeScript run directly by `node`), [pnpm 11.17](https://pnpm.io/installation), and authenticate [Wrangler](https://developers.cloudflare.com/workers/wrangler/commands/#login):
+Install [mise](https://mise.jdx.dev/), then use the repository-pinned Node.js 24 and pnpm 11 toolchain:
 
 ```sh
+mise install
 git submodule update --init
-pnpm install
-pnpm --dir cloudflare-os install
-pnpm exec wrangler login
+mise exec -- pnpm install
+mise exec -- pnpm --dir cloudflare-os install
+mise exec -- pnpm exec wrangler login
 ```
 
 Your account needs [Workers](https://developers.cloudflare.com/workers/), [KV](https://developers.cloudflare.com/kv/), [R2](https://developers.cloudflare.com/r2/), [Browser Rendering](https://developers.cloudflare.com/browser-rendering/), and [Dynamic Worker Loaders](https://developers.cloudflare.com/workers/runtime-apis/bindings/worker-loader/). It also needs [Workers AI](https://developers.cloudflare.com/workers-ai/) and [AI Gateway](https://developers.cloudflare.com/ai-gateway/), which the default model catalog runs on; only turning that catalog off makes them dispensable. [Artifacts](https://developers.cloudflare.com/artifacts/) is optional.
@@ -104,8 +105,8 @@ The hostname belongs to the router, the only Worker here with a public route. Wr
 ### 3. Validate and deploy
 
 ```sh
-pnpm check
-pnpm deploy
+mise exec -- pnpm check
+mise exec -- pnpm deploy
 ```
 
 For production, use the checked-in [GitHub Actions workflow](.github/workflows/deploy.yml). It checks out the `cloudflare-os` submodule, installs both dependency trees, runs `pnpm check`, and then runs `pnpm deploy`. Do not replace it with the Cloudflare dashboard's generic `npx wrangler deploy` command.

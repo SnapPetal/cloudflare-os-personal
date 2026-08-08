@@ -29,6 +29,10 @@
       "name": "thonbecker-public-chat",
       "route": { "customDomain": "chat.thonbecker.biz" }
     },
+    "s3vExplorer": {
+      "name": "s3v-explorer",
+      "route": { "customDomain": "vectors.thonbecker.biz" }
+    },
     "context": { "name": "thonbecker-personal-os-context" },
 
     // The Scheduler Gatekeeper, which gives agents scheduled and recurring work. Ambient like
@@ -87,6 +91,13 @@
     //   // Optional override; defaults to "gatekeeper-context-collections".
     //   "namespace": "custom-context-collections"
     // }
+  },
+
+  // The viewer's data plane remains Amazon S3 Vectors. AWS credentials are Worker secrets,
+  // never values in this file. The bucket is intentionally fixed by the Worker at runtime.
+  "s3vExplorer": {
+    "region": "us-east-1",
+    "vectorBucketName": "thonbecker-vectors"
   },
 
   // Displayed to agents when the example custom integration is enabled in /admin.
