@@ -28,6 +28,7 @@ const validConfig = {
   },
   context: { sharingDomain: "production", kvNamespaceId: "context-kv-id" },
   s3vExplorer: { region: "us-east-1", vectorBucketName: "acme-vectors" },
+  bookingAdmin: { baseUrl: "https://booking.example.com" },
   customGatekeeper: { name: "Acme", message: "Use the company handbook." },
   errorReporting: { enabled: true, environment: "production", release: "abc123" },
   resources: {
@@ -117,6 +118,7 @@ test("generates Access-mode Workshop, Context, and custom Gatekeeper configs", a
   assert.equal(generated.workshop.vars.CF_ACCESS_AUD, validConfig.access.audience);
   assert.equal(generated.workshop.vars.CF_AI_GATEWAY, "cloudflare-os");
   assert.equal(generated.workshop.vars.CF_AI_GATEWAY_PROVIDERS, "anthropic,cloudflare");
+  assert.equal(generated.workshop.vars.BOOKING_ADMIN_BASE_URL, "https://booking.example.com");
   assert.deepEqual(generated.workshop.secrets, { required: ["CF_AI_GATEWAY_API_TOKEN"] });
   assert.deepEqual(generated.workshop.ai, { binding: "WORKERS_AI" });
   assert.deepEqual(generated.workshop.services, [
@@ -137,11 +139,15 @@ test("generates Access-mode Workshop, Context, and custom Gatekeeper configs", a
       service: "acme-cloudflare-os-custom",
       entrypoint: "GatekeeperVendor",
     },
+    {
+      binding: "S3V_EXPLORER",
+      service: "s3v-explorer",
+    },
   ]);
   assert.deepEqual(generated.workshop.assets, {
     directory: "../workshop-frontend/dist",
     not_found_handling: "single-page-application",
-      run_worker_first: ["/api", "/api/*", "/blueprint-screenshot/*"],
+    run_worker_first: ["/api", "/api/*", "/blueprint-screenshot/*", "/vector-store", "/vector-store/*"],
   });
   assert.deepEqual(generated.workshop.kv_namespaces, [
     { binding: "BLUEPRINTS", id: "blueprints-kv-id" },
@@ -155,7 +161,7 @@ test("generates Access-mode Workshop, Context, and custom Gatekeeper configs", a
   ]);
   assert.deepEqual(generated.publicChat.vars, {
     OPENAI_MODEL: "gpt-5.6-terra",
-    BOOKING_AVAILABILITY_URL: "https://booking.thonbecker.biz/booking/api/availability",
+    BOOKING_AVAILABILITY_URL: "https://booking.example.com/booking/api/availability",
   });
   assert.equal(generated.publicChat.secrets, undefined);
   assert.equal(generated.s3vExplorer.name, "s3v-explorer");

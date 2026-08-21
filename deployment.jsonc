@@ -20,7 +20,7 @@
     },
     "s3vExplorer": {
       "name": "s3v-explorer",
-      "route": { "customDomain": "vectors.thonbecker.biz" }
+      "route": { "workersDev": false }
     },
     "context": { "name": "thonbecker-personal-os-context" },
     "customGatekeeper": { "name": "thonbecker-personal-os-gatekeeper" },
@@ -65,6 +65,10 @@
   "s3vExplorer": {
     "region": "us-east-1",
     "vectorBucketName": "thonbecker-vectors"
+  },
+
+  "bookingAdmin": {
+    "baseUrl": "https://app.thonbecker.biz"
   },
 
   // Displayed to agents when the example custom integration is enabled in /admin.

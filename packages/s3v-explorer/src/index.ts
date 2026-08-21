@@ -74,11 +74,11 @@ async function allVectors(bucket: string, index: string, env: Env): Promise<Vect
 function page(): Response {
   return new Response(`<!doctype html>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>S3V Explorer</title>
+<title>Skatetricks Knowledge</title>
 <style>
 :root{color-scheme:dark}*{box-sizing:border-box}body{font:15px system-ui;margin:0;background:#080d18;color:#e5e7eb}main{max-width:1400px;margin:auto;padding:28px}.toolbar,.card{background:#111827;border:1px solid #263449;border-radius:12px}.toolbar{display:flex;gap:8px;align-items:center;padding:12px;flex-wrap:wrap}select,input,button{font:inherit;padding:9px 11px;background:#0b1220;color:inherit;border:1px solid #34445c;border-radius:7px}button{cursor:pointer}button:hover{border-color:#60a5fa}h1{margin:0 0 5px}.muted{color:#94a3b8}.error{color:#fca5a5}.layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px;margin-top:14px}.card{padding:14px}.plot-wrap{position:relative;height:600px}.plot{display:block;width:100%;height:100%;background:radial-gradient(circle at center,#111d32,#0b1220);border-radius:8px}.empty{position:absolute;inset:0;display:grid;place-items:center;color:#94a3b8;text-align:center;padding:30px}.details{min-height:560px;overflow:auto}.details h2{font-size:18px;overflow-wrap:anywhere}.details pre{white-space:pre-wrap;overflow-wrap:anywhere;color:#cbd5e1}.list-card{margin-top:14px}.list{display:grid;gap:6px;max-height:280px;overflow:auto;margin-top:10px}.vector-row{display:flex;justify-content:space-between;gap:8px;text-align:left;width:100%;overflow:hidden}.vector-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.badge{color:#93c5fd;font-size:12px;white-space:nowrap}@media(max-width:850px){.layout{grid-template-columns:1fr}.details{min-height:0}.plot-wrap{height:440px}}
 </style>
-<main><h1>S3V Explorer</h1><p id="status" class="muted">Connecting to Amazon S3 Vectors…</p>
+<main><h1>Skatetricks Knowledge</h1><p id="status" class="muted">Connecting to the skatetricks vector store…</p>
 <div class="toolbar"><label>Bucket <select id="bucket"></select></label><label>Index <select id="index"></select></label><button id="refresh">Refresh</button></div>
 <div class="layout"><section class="card plot-wrap"><canvas id="plot" class="plot"></canvas><div id="empty" class="empty">Loading vectors…</div></section><aside class="card details" id="details"><p class="muted">Select a point or vector.</p></aside></div>
 <section class="card list-card"><label>Filter vectors <input id="search" type="search" placeholder="key or metadata"></label><div id="list" class="list"></div></section></main>

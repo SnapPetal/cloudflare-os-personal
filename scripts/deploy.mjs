@@ -32,6 +32,7 @@ const requiredPaths = [
   "context.sharingDomain",
   "s3vExplorer.region",
   "s3vExplorer.vectorBucketName",
+  "bookingAdmin.baseUrl",
   "customGatekeeper.name",
   "customGatekeeper.message",
   "observability.enabled",
@@ -137,12 +138,13 @@ export function validateConfig(config) {
   for (const [workerType, route] of [
     ["Workshop", config.workers.workshop.route],
     ["Public chat", config.workers.publicChat.route],
-    ["S3V Explorer", config.workers.s3vExplorer.route],
+    ["Skatetricks Knowledge", config.workers.s3vExplorer.route],
   ]) {
-    if (!route || Boolean(route.workersDev) === Boolean(route.customDomain)) {
+    const internalS3v = workerType === "Skatetricks Knowledge" && route?.workersDev === false && !route.customDomain;
+    if (!route || !internalS3v && Boolean(route.workersDev) === Boolean(route.customDomain)) {
       throw new Error(`Set exactly one ${workerType} route: workersDev or customDomain.`);
     }
-    if (route.workersDev !== undefined && route.workersDev !== true) {
+    if (route.workersDev !== undefined && route.workersDev !== true && !internalS3v) {
       throw new Error(`${workerType} workersDev must be boolean true when selected.`);
     }
     if (route.customDomain !== undefined && typeof route.customDomain !== "string") {
@@ -257,6 +259,7 @@ export function generateConfigs(config, bases) {
     ADMINS: config.access.admins,
     CF_ACCESS_ISS: config.access.issuer.replace(/\/$/, ""),
     CF_ACCESS_AUD: config.access.audience,
+    BOOKING_ADMIN_BASE_URL: config.bookingAdmin.baseUrl,
   };
   if (config.aiGateway.enabled) {
     Object.assign(workshop.vars, {
@@ -300,6 +303,10 @@ export function generateConfigs(config, bases) {
       service: config.workers.customGatekeeper.name,
       entrypoint: "GatekeeperVendor",
     },
+    {
+      binding: "S3V_EXPLORER",
+      service: config.workers.s3vExplorer.name,
+    },
   ];
   workshop.kv_namespaces = [
     { binding: "BLUEPRINTS", ...(config.resources.blueprintsKvNamespaceId
@@ -314,7 +321,7 @@ export function generateConfigs(config, bases) {
   workshop.assets = {
     directory: "../workshop-frontend/dist",
     not_found_handling: "single-page-application",
-    run_worker_first: ["/api", "/api/*", "/blueprint-screenshot/*"],
+    run_worker_first: ["/api", "/api/*", "/blueprint-screenshot/*", "/vector-store", "/vector-store/*"],
   };
 
   setCommon(context, config, config.workers.context.name);
@@ -336,7 +343,7 @@ export function generateConfigs(config, bases) {
   setCommon(publicChat, config, config.workers.publicChat.name, config.workers.publicChat.route);
   publicChat.vars = {
     OPENAI_MODEL: "gpt-5.6-terra",
-    BOOKING_AVAILABILITY_URL: "https://booking.thonbecker.biz/booking/api/availability",
+    BOOKING_AVAILABILITY_URL: `${config.bookingAdmin.baseUrl}/booking/api/availability`,
   };
 
   setCommon(s3vExplorer, config, config.workers.s3vExplorer.name, config.workers.s3vExplorer.route);

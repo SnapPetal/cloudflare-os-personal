@@ -153,6 +153,24 @@ has been deployed:
 pnpm exec wrangler secret put OPENAI_API_KEY --name thonbecker-public-chat
 ```
 
+### Private booking operations
+
+The Workshop `/admin` surface includes the private booking operations panel. It uses the same Cloudflare
+Access identity as the Workshop and exposes only booking administration actions to the configured
+administrator email. The Workshop Worker forwards these requests to Spring at
+`https://app.thonbecker.biz/booking/admin/api/**` with the Access JWT in the `Authorization` header.
+
+The public `booking.thonbecker.biz` hostname is not the admin upstream; it remains the public booking
+experience. Keep the Spring environment values synchronized with `deployment.jsonc`:
+
+```text
+PERSONAL_CF_ACCESS_ISSUER
+PERSONAL_CF_ACCESS_AUDIENCE
+PERSONAL_CF_ACCESS_ADMIN_EMAIL
+```
+
+The issuer and audience must be the same Access application values used by the Workshop deployment.
+
 ## Operations and upgrades
 
 - Stream production events with [`wrangler tail`](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/).

@@ -36,6 +36,11 @@ The custom logo appears in the app chrome, sign-in screens, and browser tab on e
 | `resources` | Blueprint/avatar KV and blueprint-content R2 | `null` to provision or explicit IDs/names to reuse |
 | `observability` | Worker telemetry | Structured logs, invocation logs, traces, and sampling; see the [observability guide](observability.md) |
 
+The optional `bookingAdmin.baseUrl` integration is the Spring origin used by the private Workshop booking
+panel. For this deployment it is `https://app.thonbecker.biz`; do not use the public
+`booking.thonbecker.biz` hostname. The Workshop forwards the user's Cloudflare Access JWT to Spring, so
+the Spring issuer, audience, and administrator email must match the `access` configuration exactly.
+
 Secrets are never valid values in this file. Install them interactively with Wrangler against the Worker that consumes them.
 
 ### Workers and routing

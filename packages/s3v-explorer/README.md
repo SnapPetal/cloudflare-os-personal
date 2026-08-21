@@ -1,4 +1,4 @@
-# S3V Explorer
+# Skatetricks Knowledge
 
 This is the web companion for the former `SnapPetal/s3v-explorer` desktop app. It keeps the same core workflow—list vector buckets and indexes, inspect vectors and metadata, run nearest-neighbor queries, and delete a vector—while moving AWS credentials to a server-side Cloudflare Worker.
 
@@ -23,4 +23,4 @@ The Worker is pinned to `thonbecker-vectors` and uses only `s3vectors:GetVectorB
 
 Rotate the AWS access key by creating a replacement key, updating the two Cloudflare Worker secrets, verifying the UI, and then deactivating and deleting the old key. Never print the secret JSON or commit it to either repository.
 
-Before any hosted deployment, put the Worker behind a private Cloudflare Access application and use a dedicated Worker identity. The starter's existing Access application protects only its configured Workshop hostname.
+Before any hosted deployment, put the Worker behind a private Cloudflare Access application and use a dedicated Worker identity. This explorer has no public custom domain in the personal deployment; it is reached through the private Cloudflare OS `/vector-store` service binding. The Workshop Access application protects the user-facing control plane, while AWS credentials remain Worker secrets.
