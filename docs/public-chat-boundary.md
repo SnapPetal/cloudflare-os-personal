@@ -55,7 +55,9 @@ the Worker stays deployed but returns a temporary-unavailable response; the webs
 needs the key. The selected model is configured as `gpt-5.6-terra` in the generated Worker config and
 can be changed in `scripts/deploy.mjs` if the account uses a different model name.
 
-The first rate limit is intentionally best-effort per Worker instance: 10 requests per IP per 10 minutes.
+The deployed Worker uses a Cloudflare Rate Limiting binding for 10 requests per client IP per minute;
+local development falls back to an in-memory limiter because Rate Limiting bindings are not available
+in local simulations. This is an abuse-control boundary, not an accurate billing or quota system.
 Cloudflare Logs/analytics record request events without message text. If usage grows, move the limit to a
 Cloudflare Rate Limiting rule or Durable Object before adding richer features.
 

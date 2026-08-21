@@ -156,6 +156,9 @@ test("generates Access-mode Workshop, Context, and custom Gatekeeper configs", a
   assert.equal(generated.workshop.r2_buckets[0].bucket_name, "cloudflare-os-blueprints");
   assert.equal(generated.context.name, "acme-cloudflare-os-context");
   assert.equal(generated.publicChat.name, "acme-public-chat");
+  assert.deepEqual(generated.publicChat.ratelimits, [
+    { name: "CHAT_RATE_LIMITER", namespace_id: "1001", simple: { limit: 10, period: 60 } },
+  ]);
   assert.deepEqual(generated.publicChat.routes, [
     { pattern: "chat.example.com", custom_domain: true },
   ]);

@@ -153,6 +153,10 @@ has been deployed:
 pnpm exec wrangler secret put OPENAI_API_KEY --name thonbecker-public-chat
 ```
 
+The Worker applies a Cloudflare Rate Limiting binding of 10 requests per minute per client IP before
+calling OpenAI. The in-memory limiter remains only as a local-development fallback. The rate-limit
+namespace ID in `packages/public-chat/wrangler.jsonc` must be unique within the Cloudflare account.
+
 ### Private booking operations
 
 The Workshop `/admin` surface includes the private booking operations panel. It uses the same Cloudflare

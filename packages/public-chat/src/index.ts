@@ -2,6 +2,7 @@ interface Env {
   OPENAI_API_KEY?: string;
   OPENAI_MODEL?: string;
   BOOKING_AVAILABILITY_URL?: string;
+  CHAT_RATE_LIMITER?: RateLimit;
 }
 
 const ALLOWED_ORIGINS = new Set([
@@ -12,7 +13,7 @@ const ALLOWED_ORIGINS = new Set([
 const DEFAULT_TIMEZONE = "America/Chicago";
 const MAX_MESSAGE_LENGTH = 1_000;
 const MAX_TIMEZONE_LENGTH = 100;
-const WINDOW_MS = 10 * 60 * 1_000;
+const WINDOW_MS = 60 * 1_000;
 const MAX_REQUESTS_PER_WINDOW = 10;
 const requestWindows = new Map<string, { count: number; resetAt: number }>();
 
@@ -44,7 +45,7 @@ function allowedOrigin(origin: string | null): boolean {
   return origin === null || ALLOWED_ORIGINS.has(origin);
 }
 
-function rateLimited(ip: string): boolean {
+function locallyRateLimited(ip: string): boolean {
   const now = Date.now();
   const current = requestWindows.get(ip);
   if (!current || current.resetAt <= now) {
@@ -53,6 +54,14 @@ function rateLimited(ip: string): boolean {
   }
   current.count += 1;
   return current.count > MAX_REQUESTS_PER_WINDOW;
+}
+
+async function rateLimited(ip: string, env: Env): Promise<boolean> {
+  if (env.CHAT_RATE_LIMITER) {
+    const result = await env.CHAT_RATE_LIMITER.limit({ key: `public-chat:${ip}` });
+    return !result.success;
+  }
+  return locallyRateLimited(ip);
 }
 
 function outputText(data: any): string | undefined {
@@ -145,7 +154,7 @@ export default {
     }
 
     const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-    if (rateLimited(ip)) return json({ error: "Please try again later" }, 429, origin);
+    if (await rateLimited(ip, env)) return json({ error: "Please try again later" }, 429, origin);
 
     let body: unknown;
     try {
