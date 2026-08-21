@@ -5,6 +5,7 @@
     "lib": ["ESNext"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "rootDir": "../..",
     "types": ["@cloudflare/workers-types"],
     // TypeScript 7 requires this explicitly once outDir is set (TS5011).
     "rootDir": "./src",
