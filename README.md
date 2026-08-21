@@ -5,18 +5,18 @@
 <h1 align="center">Customized for your Company</h1>
 
 <p align="center">
-  Deploy a pinned Cloudflare OS release with branding, sign-in, integrations, routes, and upgrades under your control.
+  Deploy a pinned Cloudflare OS fork commit with branding, sign-in, integrations, routes, and upgrades under your control.
 </p>
 
 <p align="center">
   <a href="https://developers.cloudflare.com/workers/"><img alt="Cloudflare Workers" src="https://img.shields.io/badge/Cloudflare-Workers-F6821F?logo=cloudflare&logoColor=white"></a>
   <a href="https://nodejs.org/"><img alt="Node.js 24" src="https://img.shields.io/badge/Node.js-24-5FA04E?logo=nodedotjs&logoColor=white"></a>
   <a href="https://pnpm.io/"><img alt="pnpm 11" src="https://img.shields.io/badge/pnpm-11-F69220?logo=pnpm&logoColor=white"></a>
-  <a href="https://github.com/cloudflare/cloudflare-os"><img alt="Cloudflare OS upstream" src="https://img.shields.io/badge/upstream-Cloudflare_OS-24292F?logo=github"></a>
+  <a href="https://github.com/SnapPetal/cloudflare-os"><img alt="SnapPetal Cloudflare OS fork" src="https://img.shields.io/badge/fork-Cloudflare_OS-24292F?logo=github"></a>
 </p>
 
 > [!IMPORTANT]
-> Cloudflare OS is early-access software. Pin upstream releases, review changes, and verify the trust boundary before every production upgrade.
+> Cloudflare OS is early-access software. This deployment pins a reviewed commit from the [`SnapPetal/cloudflare-os`](https://github.com/SnapPetal/cloudflare-os) fork. Review upstream and fork changes, then verify the trust boundary before every production upgrade.
 
 ## Four steps
 
@@ -46,7 +46,7 @@ The production deployment is performed by GitHub Actions from `main`. Open **Act
 
 ## Overview
 
-This repository adds deployment controls around a pinned [Cloudflare OS](https://github.com/cloudflare/cloudflare-os) release without modifying the upstream source.
+This repository adds deployment controls around a pinned [Cloudflare OS](https://github.com/cloudflare/cloudflare-os) release from the [`SnapPetal/cloudflare-os`](https://github.com/SnapPetal/cloudflare-os) fork. Wrapper-owned Workers stay in this repository; changes that must live inside Cloudflare OS are kept as reviewable fork commits.
 
 | Control | What you own |
 | --- | --- |
@@ -60,13 +60,13 @@ This repository adds deployment controls around a pinned [Cloudflare OS](https:/
 
 ### Architecture
 
-<img src="docs/assets/architecture.svg" alt="Cloudflare OS deployment architecture: users sign in and reach the pinned Cloudflare OS release, holding the Workshop kernel, Gadgets, Blueprints, and the default Gatekeepers. Service bindings connect it to the Workers this repository owns: optional AI, custom Gatekeepers, the Error Reporter, and KV and R2 storage.">
+<img src="docs/assets/architecture.svg" alt="Cloudflare OS deployment architecture: users sign in and reach the pinned personal fork commit, holding the Workshop kernel, Gadgets, Blueprints, and the default Gatekeepers. Service bindings connect it to the Workers this repository owns: optional AI, custom Gatekeepers, the Error Reporter, and KV and R2 storage.">
 
-The deploy command derives temporary Wrangler files from upstream base configs, builds the frontend in Cloudflare Access mode, deploys the private Error Reporter and Gatekeepers before the Workshop, and removes generated files even on failure. Secrets never enter tracked configuration.
+The deploy command derives temporary Wrangler files from the fork's base configs, builds the frontend in Cloudflare Access mode, generates the backend format-blueprint bundle, deploys the private Error Reporter and Gatekeepers before the Workshop, and removes temporary deployment files even on failure. Secrets never enter tracked configuration.
 
 ### If you only want branding
 
-A hosted flow deploys the same upstream release to your Cloudflare account without this repository. It builds nothing locally, configures sign-in and your admin emails for you, and leaves the whole `/admin` surface intact: site name, logo, accent color, announcements, agent instructions, featured blueprints, and which connectors your users can reach. Built-in Gatekeepers such as GitHub and Google are still yours to connect with your own OAuth credentials.
+A hosted flow deploys the same Cloudflare OS release to your Cloudflare account without this repository. It builds nothing locally, configures sign-in and your admin emails for you, and leaves the whole `/admin` surface intact: site name, logo, accent color, announcements, agent instructions, featured blueprints, and which connectors your users can reach. Built-in Gatekeepers such as GitHub and Google are still yours to connect with your own OAuth credentials.
 
 <a href="https://os.cloudflare.app/deploy"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare"></a>
 
@@ -80,7 +80,7 @@ Install [mise](https://mise.jdx.dev/), then use the repository-pinned Node.js 24
 
 ```sh
 mise install
-git submodule update --init
+git submodule update --init --recursive
 mise exec -- pnpm install
 mise exec -- pnpm --dir cloudflare-os install
 mise exec -- pnpm exec wrangler login
@@ -106,7 +106,7 @@ mise exec -- pnpm check
 mise exec -- pnpm deploy
 ```
 
-For production, use the checked-in [GitHub Actions workflow](.github/workflows/deploy.yml). It checks out the `cloudflare-os` submodule, installs both dependency trees, runs `pnpm check`, and then runs `pnpm deploy`. Do not replace it with the Cloudflare dashboard's generic `npx wrangler deploy` command.
+For production, use the checked-in [GitHub Actions workflow](.github/workflows/deploy.yml). It checks out the pinned `SnapPetal/cloudflare-os` submodule, installs both dependency trees, runs `pnpm check`, and then runs `pnpm deploy`. Do not replace it with the Cloudflare dashboard's generic `npx wrangler deploy` command.
 
 With resource values left as `null`, Wrangler creates the three KV namespaces and R2 bucket automatically and reconnects them on later deploys. Set explicit IDs or a bucket name when the deployment must reuse existing resources.
 
@@ -130,7 +130,7 @@ Backend error reporting is enabled without a vendor account. Explicit upstream i
 | Sign-in, routes, AI, storage, observability, Worker identities | [`deployment.jsonc`](deployment.jsonc) | Yes |
 | Logs, traces, error destinations, browser reporting | [Observability guide](docs/observability.md) | Sometimes |
 | Organization APIs and capabilities | [`packages/custom-gatekeeper`](packages/custom-gatekeeper/README.md) | Yes |
-| Product behavior unavailable through Worker boundaries | Pinned upstream fork/commit | Yes |
+| Product behavior unavailable through Worker boundaries | Pinned Cloudflare OS fork/commit | Yes |
 
 The complete control reference and recipes live in [Customization](docs/customization.md). The upstream [`write-gatekeeper` skill](https://github.com/cloudflare/cloudflare-os/blob/main/.agents/skills/write-gatekeeper/SKILL.md) covers richer integrations.
 
@@ -177,4 +177,4 @@ The issuer and audience must be the same Access application values used by the W
 - Triage explicit failures and choose export destinations with the [observability guide](docs/observability.md).
 - Roll a Worker back from its dashboard deployment history or with [`wrangler rollback`](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/).
 - Follow the [upgrade checklist](docs/customization.md#upgrade) before changing the pinned submodule.
-- Review the upstream Cloudflare OS documentation and release history before adopting behavior changes.
+- Review the upstream Cloudflare OS documentation, release history, and the personal fork's commits before adopting behavior changes.

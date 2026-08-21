@@ -53,7 +53,7 @@
 
   <rect class="group" x="266" y="48" width="294" height="414" rx="12"/>
   <text class="g" x="286" y="78">Cloudflare OS</text>
-  <text class="s" x="286" y="96">Pinned upstream release</text>
+  <text class="s" x="286" y="96">Pinned personal fork commit</text>
 
   <rect class="core" x="286" y="112" width="254" height="64" rx="8"/>
   <text class="t" x="304" y="140">Workshop kernel</text>
