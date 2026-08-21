@@ -178,6 +178,14 @@ PERSONAL_CF_ACCESS_ADMIN_EMAIL
 
 The issuer and audience must be the same Access application values used by the Workshop deployment.
 
+### Private vector operations
+
+The `/admin` surface also includes the **Skatetricks Knowledge** panel. It lists the configured S3
+Vectors index, displays vector metadata and dimensions, and permits deleting an individual vector
+after confirmation. The S3 Vectors Worker is API-only, has no public route, and keeps AWS credentials
+server-side. The Workshop verifies the Cloudflare Access administrator identity before reaching it
+through the `/vector-store` service binding.
+
 ## Operations and upgrades
 
 - Stream production events with [`wrangler tail`](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/).

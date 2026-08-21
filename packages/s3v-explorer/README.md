@@ -24,3 +24,8 @@ The Worker is pinned to `thonbecker-vectors` and uses only `s3vectors:GetVectorB
 Rotate the AWS access key by creating a replacement key, updating the two Cloudflare Worker secrets, verifying the UI, and then deactivating and deleting the old key. Never print the secret JSON or commit it to either repository.
 
 Before any hosted deployment, keep the Worker off public routes and use a dedicated Worker identity. In the personal deployment it is reached only through the private Cloudflare OS `/vector-store` service binding. The Workshop validates the Access identity and administrator allowlist before forwarding requests; AWS credentials remain Worker secrets.
+
+The Worker has no user-facing HTML page. Its API is intentionally limited to listing the configured
+bucket and indexes, reading vectors and metadata, querying nearest neighbors, and deleting individual
+vectors. Index creation, recreation, bucket management, and credential management remain outside the
+Worker API.
