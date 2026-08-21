@@ -405,11 +405,11 @@ function build(config) {
   if (config.errorReporting.enabled) {
     run(["--dir", "packages/error-reporter", "run", "build"]);
   }
-  run(["--dir", "cloudflare-os", "--filter", "@gadgets/workshop-frontend", "build"], root, {
+  run(["--dir", "cloudflare-os/packages/workshop-frontend", "exec", "vp", "run", "build"], root, {
     ...process.env,
     VITE_CF_ACCESS_MODE: "true",
   });
-  run(["--dir", "cloudflare-os", "--filter", "@gadgets/workshop-backend", "build"]);
+  run(["--dir", "cloudflare-os/packages/workshop-backend", "run", "build:worker"]);
 }
 
 async function main() {

@@ -3,7 +3,17 @@ packages:
   - cloudflare-os/packages/error-reporting
   - packages/*
 
+catalog:
+  capnweb: ^0.12.0
+  capnweb-validate: 0.3.0
+  typescript: 7.0.2
+  vitest: ^4.1.10
+
 allowBuilds:
   esbuild: true
   sharp: true
   workerd: true
+
+minimumReleaseAgeExclude:
+  - capnweb-validate
+  - capnweb@0.12.0
