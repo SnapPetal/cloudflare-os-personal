@@ -53,7 +53,7 @@ pnpm exec wrangler secret put OPENAI_API_KEY --name thonbecker-public-chat
 Use the restricted OpenAI project/key created for this experiment. If the secret is not configured,
 the Worker stays deployed but returns a temporary-unavailable response; the website never receives or
 needs the key. The selected model is configured as `gpt-5.6-terra` in the generated Worker config and
-can be changed in `scripts/deploy.mjs` if the account uses a different model name.
+can be changed in `scripts/deploy.ts` if the account uses a different model name.
 
 The deployed Worker uses a Cloudflare Rate Limiting binding for 10 requests per client IP per minute;
 local development falls back to an in-memory limiter because Rate Limiting bindings are not available

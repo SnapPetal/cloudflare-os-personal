@@ -35,7 +35,7 @@ pnpm check
 pnpm deploy
 ```
 
-The Cloudflare dashboard's **Workers & Pages → Create → Connect GitHub** flow is for deploying one generic Worker or Pages project. It does not run this repository's `scripts/deploy.mjs`, does not deploy the dependent Gatekeeper and Error Reporter Workers in the required order, and does not apply the generated service bindings. Do not connect this repository through that generic flow.
+The Cloudflare dashboard's **Workers & Pages → Create → Connect GitHub** flow is for deploying one generic Worker or Pages project. It does not run this repository's `scripts/deploy.ts`, does not deploy the dependent Gatekeeper and Error Reporter Workers in the required order, and does not apply the generated service bindings. Do not connect this repository through that generic flow.
 
 For repeatable deployments, run the same commands from a local checkout or from GitHub Actions after authenticating Wrangler. The repository's deploy script is the source of truth.
 
