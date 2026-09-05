@@ -196,6 +196,7 @@ through the `/vector-store` service binding.
 - Triage explicit failures and choose export destinations with the [observability guide](docs/observability.md).
 - Roll a Worker back from its dashboard deployment history or with [`wrangler rollback`](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/).
 - Follow the [upgrade checklist](docs/customization.md#upgrade) before changing the pinned submodule.
+- Follow the [upstream sync workflow](docs/upstream-sync.md) when updating either fork layer.
 - Review the upstream Cloudflare OS documentation and release history before adopting behavior changes.
 
 ### Moving here from the hosted deploy (os.cloudflare.app/deploy)
