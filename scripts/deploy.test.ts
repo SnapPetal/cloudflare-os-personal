@@ -233,6 +233,10 @@ test("generates Access-mode Workshop, Context, and custom Gatekeeper configs", a
       entrypoint: "GatekeeperVendor",
     },
     {
+      binding: "S3V_EXPLORER",
+      service: "acme-cloudflare-os-vectors",
+    },
+    {
       binding: "GATEKEEPER_CUSTOM",
       service: "acme-cloudflare-os-custom",
       entrypoint: "GatekeeperVendor",

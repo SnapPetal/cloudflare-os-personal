@@ -547,6 +547,12 @@ export function generateConfigs(config: DeploymentConfig, bases: BaseConfigs): G
       service: config.workers.scheduler.name,
       entrypoint: "GatekeeperVendor",
     },
+    // The private admin UI reaches Amazon S3 Vectors through this service binding. The vector
+    // Worker has no public route, so omitting this binding makes the panel report it as absent.
+    {
+      binding: "S3V_EXPLORER",
+      service: config.workers.s3vExplorer.name,
+    },
     {
       binding: "GATEKEEPER_CUSTOM",
       service: config.workers.customGatekeeper.name,
