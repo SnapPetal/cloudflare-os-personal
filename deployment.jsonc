@@ -100,8 +100,13 @@
     "vectorBucketName": "thonbecker-vectors"
   },
 
-  "bookingAdmin": {
-    "baseUrl": "https://app.thonbecker.biz"
+  // PersonalWeb remains the source of truth for booking data and business rules. Cloudflare OS
+  // owns the private operator UI/proxy and the public read-only availability consumer.
+  "personalWeb": {
+    "baseUrl": "https://app.thonbecker.biz",
+    "booking": {
+      "availabilityPath": "/booking/api/availability"
+    }
   },
 
   // Displayed to agents when the example custom integration is enabled in /admin.

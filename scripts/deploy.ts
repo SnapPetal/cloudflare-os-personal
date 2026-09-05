@@ -58,7 +58,8 @@ const requiredPaths = [
   "observability.traces.headSamplingRate",
   "s3vExplorer.region",
   "s3vExplorer.vectorBucketName",
-  "bookingAdmin.baseUrl",
+  "personalWeb.baseUrl",
+  "personalWeb.booking.availabilityPath",
 ];
 
 // `aiGateway.accountId` is deliberately absent: null is its normal value, meaning "the gateway
@@ -267,7 +268,8 @@ export function validateConfig(config: DeploymentConfig): DeploymentConfig {
   for (const [label, value] of [
     ["s3vExplorer.region", config.s3vExplorer.region],
     ["s3vExplorer.vectorBucketName", config.s3vExplorer.vectorBucketName],
-    ["bookingAdmin.baseUrl", config.bookingAdmin.baseUrl],
+    ["personalWeb.baseUrl", config.personalWeb.baseUrl],
+    ["personalWeb.booking.availabilityPath", config.personalWeb.booking.availabilityPath],
   ] as const) {
     if (typeof value !== "string" || !value.trim()) throw new Error(`${label} must be a string.`);
   }
@@ -494,6 +496,7 @@ export function generateConfigs(config: DeploymentConfig, bases: BaseConfigs): G
     // Upstream builds OAuth redirect URIs and other absolute links from this. The backend has no
     // public route of its own, so the router's origin is the only correct value.
     PUBLIC_BASE_URL: origin,
+    BOOKING_ADMIN_BASE_URL: config.personalWeb.baseUrl,
   };
   const gateway = aiGatewayPlan(config);
   if (gateway) {
@@ -595,7 +598,10 @@ export function generateConfigs(config: DeploymentConfig, bases: BaseConfigs): G
   setCommon(publicChat, config, config.workers.publicChat.name, config.workers.publicChat.route);
   publicChat.vars = {
     OPENAI_MODEL: "gpt-5.6-terra",
-    BOOKING_AVAILABILITY_URL: `${config.bookingAdmin.baseUrl}/booking/api/availability`,
+    BOOKING_AVAILABILITY_URL: new URL(
+      config.personalWeb.booking.availabilityPath,
+      `${config.personalWeb.baseUrl.replace(/\/$/, "")}/`,
+    ).toString(),
   };
 
   setCommon(s3vExplorer, config, config.workers.s3vExplorer.name, config.workers.s3vExplorer.route);

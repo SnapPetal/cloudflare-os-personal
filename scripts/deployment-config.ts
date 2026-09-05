@@ -131,7 +131,11 @@ export interface DeploymentConfig {
     blueprintContentBucket: string | null;
   };
   s3vExplorer: { region: string; vectorBucketName: string };
-  bookingAdmin: { baseUrl: string };
+  /** PersonalWeb booking API boundary; PersonalWeb remains the booking source of truth. */
+  personalWeb: {
+    baseUrl: string;
+    booking: { availabilityPath: string };
+  };
   observability: DeploymentObservabilityConfig;
 }
 

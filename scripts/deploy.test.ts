@@ -40,7 +40,12 @@ const validConfig: DeploymentConfig = {
     artifacts: { enabled: true, namespace: "acme-context-collections" },
   },
   s3vExplorer: { region: "us-east-1", vectorBucketName: "acme-vectors" },
-  bookingAdmin: { baseUrl: "https://app.example.com" },
+  personalWeb: {
+    baseUrl: "https://app.example.com",
+    booking: {
+      availabilityPath: "/booking/api/availability",
+    },
+  },
   customGatekeeper: { name: "Acme", message: "Use the company handbook." },
   errorReporting: { enabled: true, environment: "production", release: "abc123" },
   resources: {
@@ -201,6 +206,7 @@ test("generates Access-mode Workshop, Context, and custom Gatekeeper configs", a
   assert.equal(vars.CF_ACCESS_ISS, validConfig.access.issuer);
   assert.equal(vars.CF_ACCESS_AUD, validConfig.access.audience);
   assert.equal(vars.PUBLIC_BASE_URL, "https://os.example.com");
+  assert.equal(vars.BOOKING_ADMIN_BASE_URL, validConfig.personalWeb.baseUrl);
   assert.equal(vars.CF_AI_GATEWAY, "cloudflare-os");
   assert.equal(vars.CF_AI_GATEWAY_PROVIDERS, "anthropic,cloudflare");
   assert.deepEqual(generated.workshop.ai, { binding: "WORKERS_AI" });
