@@ -27,6 +27,6 @@
     "vite": "catalog:",
     "vite-plus": "catalog:",
     "wrangler": "catalog:",
-    "oxlint": "1.76.0",
+    "oxlint": "1.76.0"
   }
 }
