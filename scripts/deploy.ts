@@ -22,6 +22,8 @@ const generatedName = "wrangler.prod.jsonc";
 const packageDirs = {
   router: "cloudflare-os/packages/router",
   workshop: "cloudflare-os/packages/workshop-backend",
+  publicChat: "packages/public-chat",
+  s3vExplorer: "packages/s3v-explorer",
   context: "cloudflare-os/packages/gatekeeper-context",
   scheduler: "cloudflare-os/packages/gatekeeper-scheduler",
   customGatekeeper: "packages/custom-gatekeeper",
@@ -37,6 +39,8 @@ const requiredPaths = [
   "accountId",
   "workers.router.name",
   "workers.workshop.name",
+  "workers.publicChat.name",
+  "workers.s3vExplorer.name",
   "workers.context.name",
   "workers.scheduler.name",
   "workers.customGatekeeper.name",
@@ -52,6 +56,9 @@ const requiredPaths = [
   "observability.logs.invocationLogs",
   "observability.traces.enabled",
   "observability.traces.headSamplingRate",
+  "s3vExplorer.region",
+  "s3vExplorer.vectorBucketName",
+  "bookingAdmin.baseUrl",
 ];
 
 // `aiGateway.accountId` is deliberately absent: null is its normal value, meaning "the gateway
@@ -236,6 +243,33 @@ export function validateConfig(config: DeploymentConfig): DeploymentConfig {
   const hostnamePattern = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
   if (route.customDomain && !hostnamePattern.test(route.customDomain)) {
     throw new Error("Router customDomain must be a lowercase hostname.");
+  }
+
+  for (const [label, workerRoute] of [
+    ["Public chat", config.workers.publicChat.route],
+  ] as const) {
+    if (!workerRoute || Boolean(workerRoute.workersDev) === Boolean(workerRoute.customDomain)) {
+      throw new Error(`Set exactly one ${label} route: workersDev or customDomain.`);
+    }
+    if (workerRoute.workersDev !== undefined && workerRoute.workersDev !== true) {
+      throw new Error(`${label} workersDev must be boolean true when selected.`);
+    }
+    if (workerRoute.customDomain !== undefined &&
+        (typeof workerRoute.customDomain !== "string" ||
+         !hostnamePattern.test(workerRoute.customDomain))) {
+      throw new Error(`${label} customDomain must be a lowercase hostname.`);
+    }
+  }
+  if (config.workers.s3vExplorer.route.workersDev !== false ||
+      config.workers.s3vExplorer.route.customDomain !== undefined) {
+    throw new Error("S3 Vector Explorer must use workersDev: false without a public domain.");
+  }
+  for (const [label, value] of [
+    ["s3vExplorer.region", config.s3vExplorer.region],
+    ["s3vExplorer.vectorBucketName", config.s3vExplorer.vectorBucketName],
+    ["bookingAdmin.baseUrl", config.bookingAdmin.baseUrl],
+  ] as const) {
+    if (typeof value !== "string" || !value.trim()) throw new Error(`${label} must be a string.`);
   }
 
   validatePublicBaseUrl(config, route);
@@ -432,6 +466,8 @@ export function generateConfigs(config: DeploymentConfig, bases: BaseConfigs): G
   validateConfig(config);
   const router = structuredClone(bases.router);
   const workshop = structuredClone(bases.workshop);
+  const publicChat = structuredClone(bases.publicChat);
+  const s3vExplorer = structuredClone(bases.s3vExplorer);
   const context = structuredClone(bases.context);
   const scheduler = structuredClone(bases.scheduler);
   const customGatekeeper = structuredClone(bases.customGatekeeper);
@@ -556,8 +592,20 @@ export function generateConfigs(config: DeploymentConfig, bases: BaseConfigs): G
     setCommon(errorReporter, config, config.workers.errorReporter!.name);
   }
 
+  setCommon(publicChat, config, config.workers.publicChat.name, config.workers.publicChat.route);
+  publicChat.vars = {
+    OPENAI_MODEL: "gpt-5.6-terra",
+    BOOKING_AVAILABILITY_URL: `${config.bookingAdmin.baseUrl}/booking/api/availability`,
+  };
+
+  setCommon(s3vExplorer, config, config.workers.s3vExplorer.name, config.workers.s3vExplorer.route);
+  s3vExplorer.vars = {
+    AWS_REGION: config.s3vExplorer.region,
+    VECTOR_BUCKET_NAME: config.s3vExplorer.vectorBucketName,
+  };
+
   return {
-    router, workshop, context, scheduler, customGatekeeper,
+    router, workshop, publicChat, s3vExplorer, context, scheduler, customGatekeeper,
     ...(errorReporter && { errorReporter }),
   };
 }
@@ -604,6 +652,8 @@ export function buildCommands(config: DeploymentConfig): BuildCommand[] {
     // The Scheduler's `build` nests the same cached `vp run build:app`, so it needs the same pair.
     { args: submoduleBuild("@gadgets/gatekeeper-scheduler", "build:app") },
     { args: submoduleBuild("@gadgets/gatekeeper-scheduler") },
+    { args: ownBuild("public-chat", "types:check") },
+    { args: ownBuild("s3v-explorer", "types:check") },
     { args: ownBuild("custom-gatekeeper") },
     ...(config.errorReporting.enabled ? [{ args: ownBuild("error-reporter") }] : []),
     // Access mode is a build-time constant in the frontend bundle (`src/useAuth.ts`), so it is set
@@ -717,6 +767,8 @@ async function main(): Promise<void> {
   const generated = generateConfigs(config, {
     router: await readJsonc(join(root, packageDirs.router, "wrangler.jsonc")),
     workshop: await readJsonc(join(root, packageDirs.workshop, "wrangler.jsonc")),
+    publicChat: await readJsonc(join(root, packageDirs.publicChat, "wrangler.jsonc")),
+    s3vExplorer: await readJsonc(join(root, packageDirs.s3vExplorer, "wrangler.jsonc")),
     context: await readJsonc(join(root, packageDirs.context, "wrangler.jsonc")),
     scheduler: await readJsonc(join(root, packageDirs.scheduler, "wrangler.jsonc")),
     customGatekeeper: await readJsonc(join(root, packageDirs.customGatekeeper, "wrangler.jsonc")),
@@ -737,6 +789,8 @@ async function main(): Promise<void> {
     if (config.errorReporting.enabled) {
       deployWorker(packageDirs.errorReporter, deployArgs);
     }
+    deployWorker(packageDirs.publicChat, deployArgs);
+    deployWorker(packageDirs.s3vExplorer, deployArgs);
     deployWorker(packageDirs.context, deployArgs);
     deployWorker(packageDirs.scheduler, deployArgs);
     deployWorker(packageDirs.customGatekeeper, deployArgs);

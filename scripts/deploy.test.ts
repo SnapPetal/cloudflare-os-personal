@@ -16,6 +16,8 @@ const validConfig: DeploymentConfig = {
   workers: {
     router: { name: "acme-cloudflare-os", route: { customDomain: "os.example.com" } },
     workshop: { name: "acme-cloudflare-os-backend" },
+    publicChat: { name: "acme-cloudflare-os-chat", route: { customDomain: "chat.example.com" } },
+    s3vExplorer: { name: "acme-cloudflare-os-vectors", route: { workersDev: false } },
     context: { name: "acme-cloudflare-os-context" },
     scheduler: { name: "acme-cloudflare-os-scheduler" },
     customGatekeeper: { name: "acme-cloudflare-os-custom" },
@@ -37,6 +39,8 @@ const validConfig: DeploymentConfig = {
     kvNamespaceId: "context-kv-id",
     artifacts: { enabled: true, namespace: "acme-context-collections" },
   },
+  s3vExplorer: { region: "us-east-1", vectorBucketName: "acme-vectors" },
+  bookingAdmin: { baseUrl: "https://app.example.com" },
   customGatekeeper: { name: "Acme", message: "Use the company handbook." },
   errorReporting: { enabled: true, environment: "production", release: "abc123" },
   resources: {
@@ -71,6 +75,8 @@ async function baseConfigs(): Promise<BaseConfigs> {
   return {
     router: await baseConfig("../cloudflare-os/packages/router/wrangler.jsonc"),
     workshop: await baseConfig("../cloudflare-os/packages/workshop-backend/wrangler.jsonc"),
+    publicChat: await baseConfig("../packages/public-chat/wrangler.jsonc"),
+    s3vExplorer: await baseConfig("../packages/s3v-explorer/wrangler.jsonc"),
     context: await baseConfig("../cloudflare-os/packages/gatekeeper-context/wrangler.jsonc"),
     scheduler: await baseConfig("../cloudflare-os/packages/gatekeeper-scheduler/wrangler.jsonc"),
     customGatekeeper: await baseConfig("../packages/custom-gatekeeper/wrangler.jsonc"),
@@ -322,7 +328,7 @@ test("keeps every Worker behind the router off the public internet", async () =>
   const workers = Object.entries(generated) as [string, ProdWranglerConfig][];
 
   for (const [name, worker] of workers) {
-    if (name !== "router") {
+    if (name !== "router" && name !== "publicChat") {
       assert.equal(worker.workers_dev, false, `${name} answers on workers.dev`);
       assert.equal(worker.routes, undefined, `${name} carries a public route`);
     }

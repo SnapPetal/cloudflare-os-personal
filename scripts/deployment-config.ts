@@ -109,6 +109,8 @@ export interface DeploymentConfig {
     /** Owns the public route, serves the frontend, and proxies to every other Worker. */
     router: { name: string; route: RouterRoute };
     workshop: { name: string };
+    publicChat: { name: string; route: RouterRoute };
+    s3vExplorer: { name: string; route: RouterRoute };
     context: { name: string };
     scheduler: { name: string };
     customGatekeeper: { name: string };
@@ -128,6 +130,8 @@ export interface DeploymentConfig {
     avatarsKvNamespaceId: string | null;
     blueprintContentBucket: string | null;
   };
+  s3vExplorer: { region: string; vectorBucketName: string };
+  bookingAdmin: { baseUrl: string };
   observability: DeploymentObservabilityConfig;
 }
 
@@ -179,6 +183,8 @@ export type ProdWranglerConfig =
 export interface GeneratedConfigs {
   router: ProdWranglerConfig;
   workshop: ProdWranglerConfig;
+  publicChat: ProdWranglerConfig;
+  s3vExplorer: ProdWranglerConfig;
   context: ProdWranglerConfig;
   scheduler: ProdWranglerConfig;
   customGatekeeper: ProdWranglerConfig;
@@ -190,6 +196,8 @@ export interface GeneratedConfigs {
 export interface BaseConfigs {
   router: ProdWranglerConfig;
   workshop: ProdWranglerConfig;
+  publicChat: ProdWranglerConfig;
+  s3vExplorer: ProdWranglerConfig;
   context: ProdWranglerConfig;
   scheduler: ProdWranglerConfig;
   customGatekeeper: ProdWranglerConfig;
