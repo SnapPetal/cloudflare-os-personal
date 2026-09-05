@@ -5,6 +5,20 @@ interface Env {
   CHAT_RATE_LIMITER?: RateLimit;
 }
 
+type ChatAction = "show_availability" | "clarify" | "unsupported";
+
+interface AvailabilitySlot {
+  start: string;
+  end: string;
+  timezone: string;
+}
+
+interface ChatAnswer {
+  message: string;
+  action: ChatAction;
+  availableSlots: AvailabilitySlot[];
+}
+
 const ALLOWED_ORIGINS = new Set([
   "https://thonbecker.biz",
   "https://www.thonbecker.biz",
@@ -73,6 +87,39 @@ function outputText(data: any): string | undefined {
   return undefined;
 }
 
+function parseChatAnswer(data: any): ChatAnswer {
+  const text = outputText(data);
+  if (!text) throw new Error("OpenAI response did not contain text");
+
+  let answer: unknown;
+  try {
+    answer = JSON.parse(text);
+  } catch {
+    throw new Error("OpenAI response was not valid JSON");
+  }
+
+  if (!answer || typeof answer !== "object") throw new Error("OpenAI response was not an object");
+  const value = answer as Record<string, unknown>;
+  const slots = value.availableSlots;
+  if (typeof value.message !== "string" ||
+      !["show_availability", "clarify", "unsupported"].includes(String(value.action)) ||
+      !Array.isArray(slots)) {
+    throw new Error("OpenAI response did not match the chat schema");
+  }
+  if (!slots.every((slot) => {
+    if (!slot || typeof slot !== "object") return false;
+    const item = slot as Record<string, unknown>;
+    return typeof item.start === "string" && typeof item.end === "string" &&
+      typeof item.timezone === "string";
+  })) throw new Error("OpenAI response contained an invalid availability slot");
+
+  return {
+    message: value.message,
+    action: value.action as ChatAction,
+    availableSlots: slots as AvailabilitySlot[],
+  };
+}
+
 function validTimezone(timezone: string): boolean {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
@@ -114,7 +161,7 @@ async function loadAvailability(timezone: string, env: Env): Promise<string> {
   return body;
 }
 
-async function answer(message: string, timezone: string, env: Env): Promise<string> {
+async function answer(message: string, timezone: string, env: Env): Promise<ChatAnswer> {
   if (!env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not configured");
   const availability = await loadAvailability(timezone, env);
 
@@ -133,15 +180,42 @@ async function answer(message: string, timezone: string, env: Env): Promise<stri
           text: `${SYSTEM_PROMPT}\n\nVisitor timezone: ${timezone}\nCurrent visitor date: ${currentDate(timezone)}\n\nRead-only availability JSON for the next 14 days:\n${availability}\n\nVisitor message: ${message}`,
         }],
       }],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "booking_chat_answer",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              message: { type: "string" },
+              action: { type: "string", enum: ["show_availability", "clarify", "unsupported"] },
+              availableSlots: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    start: { type: "string" },
+                    end: { type: "string" },
+                    timezone: { type: "string" },
+                  },
+                  required: ["start", "end", "timezone"],
+                },
+              },
+            },
+            required: ["message", "action", "availableSlots"],
+          },
+        },
+      },
       max_output_tokens: 500,
     }),
   });
 
   if (!response.ok) throw new Error(`OpenAI request failed with status ${response.status}`);
   const data = await response.json();
-  const text = outputText(data);
-  if (!text) throw new Error("OpenAI response did not contain text");
-  return text;
+  return parseChatAnswer(data);
 }
 
 export default {
@@ -174,7 +248,7 @@ export default {
 
     console.log(JSON.stringify({ event: "public_chat_request", messageLength: message.length }));
     try {
-      return json({ message: await answer(message.trim(), timezone, env) }, 200, origin);
+      return json(await answer(message.trim(), timezone, env), 200, origin);
     } catch (error) {
       console.error(JSON.stringify({ event: "public_chat_error", reason: error instanceof Error ? error.message : "unknown" }));
       return json({ error: "The chat is temporarily unavailable" }, 503, origin);
