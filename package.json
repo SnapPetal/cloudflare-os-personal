@@ -3,25 +3,30 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.17.0",
+  "engines": {
+    "node": ">=24.19.0"
+  },
   "scripts": {
-    "test": "node --test scripts/*.test.mjs && pnpm --filter custom-gatekeeper test && pnpm --filter error-reporter test && pnpm --filter s3v-explorer types:check",
+    "build": "vp run -r --cache build",
+    "test": "node --test 'scripts/**/*.test.ts' && vp run --filter '!cloudflare-os-starter' --cache test",
+    "types:scripts": "tsc -p scripts/tsconfig.json",
+    "lint:check": "vp lint",
+    "lint:fix": "vp lint --fix",
+    "lint": "pnpm run lint:check && pnpm run types:scripts && pnpm run build",
+    "check": "node scripts/deploy.ts --check",
+    "deploy": "node scripts/deploy.ts",
     "lint:custom": "oxlint scripts packages",
     "lint:custom:fix": "oxlint --fix scripts packages",
-    "lint:upstream": "pnpm --dir cloudflare-os lint:check",
-    "lint:upstream:fix": "pnpm --dir cloudflare-os lint:fix",
-    "lint": "pnpm run lint:custom && pnpm run lint:upstream",
-    "lint:fix": "pnpm run lint:custom:fix && pnpm run lint:upstream:fix",
-    "types:check": "pnpm --filter custom-gatekeeper types:check && pnpm --filter error-reporter types:check && pnpm --filter public-chat types:check && pnpm --filter s3v-explorer types:check",
-    "check": "node scripts/deploy.mjs --check",
-    "deploy": "node scripts/deploy.mjs"
+    "types:check": "pnpm --filter custom-gatekeeper types:check && pnpm --filter error-reporter types:check && pnpm --filter public-chat types:check && pnpm --filter s3v-explorer types:check"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.20.1",
+    "@cloudflare/vitest-pool-workers": "catalog:",
+    "@types/node": "26.1.0",
     "jsonc-parser": "^3.3.1",
-    "oxlint": "1.76.0",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vite-plus": "catalog:",
-    "vitest": "^4.1.10",
-    "wrangler": "^4.115.0"
+    "wrangler": "catalog:",
+    "oxlint": "1.76.0"
   }
 }
