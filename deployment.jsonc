@@ -138,7 +138,7 @@
   "observability": {
     "enabled": true,
     "headSamplingRate": 1,
-    "logs": { "invocationLogs": false },
+    "logs": { "invocationLogs": true },
     "traces": { "enabled": false, "headSamplingRate": 0.1 }
   }
 }
