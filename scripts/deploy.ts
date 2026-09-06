@@ -479,6 +479,17 @@ export function generateConfigs(config: DeploymentConfig, bases: BaseConfigs): G
   const origin = publicOrigin(config);
 
   setCommon(router, config, config.workers.router.name, config.workers.router.route);
+  // Keep the private vector admin path on the Worker path even if an upstream router rebase
+  // replaces its asset-routing defaults. Without this, ASSETS serves the SPA and skips the
+  // router -> Workshop -> s3v-explorer service-binding chain entirely.
+  router.assets = {
+    ...router.assets,
+    run_worker_first: [...new Set([
+      ...(router.assets?.run_worker_first ?? []),
+      "/vector-store",
+      "/vector-store/*",
+    ])],
+  };
   router.services = [
     { binding: "WORKSHOP_BACKEND", service: config.workers.workshop.name },
     // No entrypoint and no props: the router forwards whole HTTP requests, unlike the backend's

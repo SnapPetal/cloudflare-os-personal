@@ -292,6 +292,10 @@ test("gives the router the public route, the frontend, and every service binding
   assert.equal(generated.router.assets!.directory, "../workshop-frontend/dist");
   assert.ok(generated.router.assets!.run_worker_first!.includes("/gatekeeper/*"),
     JSON.stringify(generated.router.assets));
+  assert.ok(generated.router.assets!.run_worker_first!.includes("/vector-store"),
+    JSON.stringify(generated.router.assets));
+  assert.ok(generated.router.assets!.run_worker_first!.includes("/vector-store/*"),
+    JSON.stringify(generated.router.assets));
 });
 
 /**
