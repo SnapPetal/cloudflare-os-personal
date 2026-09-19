@@ -28,6 +28,13 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # vite 7.3.6 is pinned exact for capnweb-validate decorator support with esbuild
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+      # @cloudflare/vitest-pool-workers requires vitest 4.x
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
