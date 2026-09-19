@@ -613,8 +613,9 @@ export function generateConfigs(config: DeploymentConfig, bases: BaseConfigs): G
   }
 
   setCommon(publicChat, config, config.workers.publicChat.name, config.workers.publicChat.route);
+  publicChat.ai = { binding: "AI" };
   publicChat.vars = {
-    OPENAI_MODEL: "gpt-5.6-terra",
+    AI_MODEL: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
     BOOKING_AVAILABILITY_URL: new URL(
       config.personalWeb.booking.availabilityPath,
       `${config.personalWeb.baseUrl.replace(/\/$/, "")}/`,

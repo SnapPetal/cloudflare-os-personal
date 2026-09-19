@@ -210,6 +210,8 @@ test("generates Access-mode Workshop, Context, and custom Gatekeeper configs", a
   assert.equal(vars.CF_AI_GATEWAY, "cloudflare-os");
   assert.equal(vars.CF_AI_GATEWAY_PROVIDERS, "anthropic,cloudflare");
   assert.deepEqual(generated.workshop.ai, { binding: "WORKERS_AI" });
+  assert.deepEqual(generated.publicChat.ai, { binding: "AI" });
+  assert.equal(generated.publicChat.vars?.AI_MODEL, "@cf/meta/llama-3.3-70b-instruct-fp8-fast");
   assert.deepEqual(generated.workshop.services, [
     {
       binding: "ERROR_REPORTER",

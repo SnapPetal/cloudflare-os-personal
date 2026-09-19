@@ -4,6 +4,9 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-08-08",
   "workers_dev": false,
+  "ai": {
+    "binding": "AI"
+  },
   "ratelimits": [
     {
       "name": "CHAT_RATE_LIMITER",

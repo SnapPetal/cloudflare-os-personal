@@ -8,7 +8,7 @@ PersonalWeb Spring AI feature or expose Cloudflare OS.
 ```text
 Public website widget
   -> dedicated public Cloudflare Worker
-  -> OpenAI API (server-side secret)
+  -> Cloudflare Workers AI (@cf/meta/llama-3.3-70b-instruct-fp8-fast)
 
 Private Cloudflare OS at os.thonbecker.biz
   -> Cloudflare Access
@@ -41,19 +41,12 @@ not the chosen implementation for this experiment.
 5. Add the widget to the website only after the Worker passes secret-leak and abuse checks.
 6. Keep Cloudflare OS Access-protected throughout the experiment.
 
-## Deployment and secret setup
-
+## Deployment and configuration
+ 
 The repository deployment script deploys this Worker separately as `thonbecker-public-chat` at
-`chat.thonbecker.biz`. Deploy the Worker first, then add one Wrangler secret; the secret is never committed:
+`chat.thonbecker.biz`. It uses the Cloudflare Workers AI binding (`AI`) with `@cf/meta/llama-3.3-70b-instruct-fp8-fast`, requiring no external API keys or secrets.
 
-```bash
-pnpm exec wrangler secret put OPENAI_API_KEY --name thonbecker-public-chat
-```
-
-Use the restricted OpenAI project/key created for this experiment. If the secret is not configured,
-the Worker stays deployed but returns a temporary-unavailable response; the website never receives or
-needs the key. The selected model is configured as `gpt-5.6-terra` in the generated Worker config and
-can be changed in `scripts/deploy.ts` if the account uses a different model name.
+The model name is configured via `AI_MODEL` in the generated Worker config and can be overridden in `scripts/deploy.ts` if a different model is desired.
 
 The deployed Worker uses a Cloudflare Rate Limiting binding for 10 requests per client IP per minute;
 local development falls back to an in-memory limiter because Rate Limiting bindings are not available

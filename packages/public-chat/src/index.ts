@@ -1,6 +1,6 @@
 interface Env {
-  OPENAI_API_KEY?: string;
-  OPENAI_MODEL?: string;
+  AI?: Ai;
+  AI_MODEL?: string;
   BOOKING_AVAILABILITY_URL?: string;
   CHAT_RATE_LIMITER?: RateLimit;
 }
@@ -25,6 +25,7 @@ const ALLOWED_ORIGINS = new Set([
   "https://booking.thonbecker.biz",
 ]);
 const DEFAULT_TIMEZONE = "America/Chicago";
+const DEFAULT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const MAX_MESSAGE_LENGTH = 1_000;
 const MAX_TIMEZONE_LENGTH = 100;
 const WINDOW_MS = 60 * 1_000;
@@ -78,45 +79,68 @@ async function rateLimited(ip: string, env: Env): Promise<boolean> {
   return locallyRateLimited(ip);
 }
 
-function outputText(data: any): string | undefined {
-  for (const item of data?.output ?? []) {
-    for (const content of item.content ?? []) {
-      if (content.type === "output_text" && typeof content.text === "string") return content.text;
-    }
+function extractJsonText(raw: string): string {
+  const trimmed = raw.trim();
+  const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeBlockMatch) {
+    return codeBlockMatch[1].trim();
   }
-  return undefined;
+  const braceMatch = trimmed.match(/\{[\s\S]*\}/);
+  if (braceMatch) {
+    return braceMatch[0].trim();
+  }
+  return trimmed;
 }
 
-function parseChatAnswer(data: any): ChatAnswer {
-  const text = outputText(data);
-  if (!text) throw new Error("OpenAI response did not contain text");
-
+function parseChatAnswer(rawText: string): ChatAnswer {
   let answer: unknown;
   try {
-    answer = JSON.parse(text);
+    answer = JSON.parse(extractJsonText(rawText));
   } catch {
-    throw new Error("OpenAI response was not valid JSON");
+    return {
+      message: rawText.trim(),
+      action: "show_availability",
+      availableSlots: [],
+    };
   }
 
-  if (!answer || typeof answer !== "object") throw new Error("OpenAI response was not an object");
-  const value = answer as Record<string, unknown>;
-  const slots = value.availableSlots;
-  if (typeof value.message !== "string" ||
-      !["show_availability", "clarify", "unsupported"].includes(String(value.action)) ||
-      !Array.isArray(slots)) {
-    throw new Error("OpenAI response did not match the chat schema");
+  if (!answer || typeof answer !== "object") {
+    return {
+      message: rawText.trim(),
+      action: "show_availability",
+      availableSlots: [],
+    };
   }
-  if (!slots.every((slot) => {
-    if (!slot || typeof slot !== "object") return false;
-    const item = slot as Record<string, unknown>;
-    return typeof item.start === "string" && typeof item.end === "string" &&
-      typeof item.timezone === "string";
-  })) throw new Error("OpenAI response contained an invalid availability slot");
+
+  const value = answer as Record<string, unknown>;
+  const rawSlots = Array.isArray(value.availableSlots) ? value.availableSlots : [];
+  const validSlots: AvailabilitySlot[] = [];
+  for (const slot of rawSlots) {
+    if (slot && typeof slot === "object") {
+      const item = slot as Record<string, unknown>;
+      if (
+        typeof item.start === "string" &&
+        typeof item.end === "string" &&
+        typeof item.timezone === "string"
+      ) {
+        validSlots.push({
+          start: item.start,
+          end: item.end,
+          timezone: item.timezone,
+        });
+      }
+    }
+  }
+
+  const action: ChatAction =
+    value.action === "show_availability" || value.action === "clarify" || value.action === "unsupported"
+      ? value.action
+      : "show_availability";
 
   return {
-    message: value.message,
-    action: value.action as ChatAction,
-    availableSlots: slots as AvailabilitySlot[],
+    message: typeof value.message === "string" ? value.message : rawText.trim(),
+    action,
+    availableSlots: validSlots,
   };
 }
 
@@ -162,60 +186,48 @@ async function loadAvailability(timezone: string, env: Env): Promise<string> {
 }
 
 async function answer(message: string, timezone: string, env: Env): Promise<ChatAnswer> {
-  if (!env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not configured");
+  if (!env.AI) throw new Error("Workers AI binding (AI) is not configured");
   const availability = await loadAvailability(timezone, env);
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: env.OPENAI_MODEL || "gpt-5.6-terra",
-      input: [{
-        role: "user",
-        content: [{
-          type: "input_text",
-          text: `${SYSTEM_PROMPT}\n\nVisitor timezone: ${timezone}\nCurrent visitor date: ${currentDate(timezone)}\n\nRead-only availability JSON for the next 14 days:\n${availability}\n\nVisitor message: ${message}`,
-        }],
-      }],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "booking_chat_answer",
-          strict: true,
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              message: { type: "string" },
-              action: { type: "string", enum: ["show_availability", "clarify", "unsupported"] },
-              availableSlots: {
-                type: "array",
-                items: {
-                  type: "object",
-                  additionalProperties: false,
-                  properties: {
-                    start: { type: "string" },
-                    end: { type: "string" },
-                    timezone: { type: "string" },
-                  },
-                  required: ["start", "end", "timezone"],
-                },
-              },
-            },
-            required: ["message", "action", "availableSlots"],
-          },
-        },
-      },
-      max_output_tokens: 500,
-    }),
+  const systemInstructions = `${SYSTEM_PROMPT}
+
+You MUST respond with ONLY a valid JSON object matching this schema:
+{
+  "message": "Friendly, concise conversational reply to the visitor answering their availability question",
+  "action": "show_availability" | "clarify" | "unsupported",
+  "availableSlots": [
+    { "start": "YYYY-MM-DDTHH:MM:SS", "end": "YYYY-MM-DDTHH:MM:SS", "timezone": "${timezone}" }
+  ]
+}
+Do not wrap your response in markdown code blocks or add any text outside the JSON object.`;
+
+  const userPrompt = `Visitor timezone: ${timezone}
+Current visitor date: ${currentDate(timezone)}
+
+Read-only availability JSON for the next 14 days:
+${availability}
+
+Visitor message: ${message}`;
+
+  const model = env.AI_MODEL || DEFAULT_MODEL;
+  const result = await env.AI.run(model as any, {
+    messages: [
+      { role: "system", content: systemInstructions },
+      { role: "user", content: userPrompt },
+    ],
+    max_tokens: 600,
+    temperature: 0.2,
   });
 
-  if (!response.ok) throw new Error(`OpenAI request failed with status ${response.status}`);
-  const data = await response.json();
-  return parseChatAnswer(data);
+  const responseText =
+    typeof result === "string"
+      ? result
+      : typeof result === "object" && result && "response" in result && typeof (result as any).response === "string"
+        ? (result as any).response
+        : JSON.stringify(result);
+
+  if (!responseText) throw new Error("Workers AI response did not contain text");
+  return parseChatAnswer(responseText);
 }
 
 export default {
