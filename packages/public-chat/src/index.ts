@@ -142,6 +142,11 @@ function parseChatAnswer(data: unknown): ChatAnswer {
     };
   }
 
+  let message = typeof value.message === "string" ? value.message.trim() : "Here are the available times.";
+  if (message.endsWith(":")) {
+    message = message.slice(0, -1).trim();
+  }
+
   const rawSlots = Array.isArray(value.availableSlots) ? value.availableSlots : [];
   const validSlots: AvailabilitySlot[] = [];
   for (const slot of rawSlots) {
@@ -167,7 +172,7 @@ function parseChatAnswer(data: unknown): ChatAnswer {
       : "show_availability";
 
   return {
-    message: typeof value.message === "string" ? value.message : "Here are the available times.",
+    message,
     action,
     availableSlots: validSlots,
   };
@@ -199,6 +204,91 @@ function addDays(date: string, days: number): string {
   return value.toISOString().slice(0, 10);
 }
 
+interface RawSlot {
+  start: string;
+  end: string;
+  bookingTypeId?: number;
+  bookingTypeName?: string;
+  durationMinutes?: number;
+}
+
+interface RawAvailabilityResponse {
+  slots?: RawSlot[];
+  timezone?: string;
+}
+
+interface FormattedSchedule {
+  scheduleText: string;
+  uniqueSlots: AvailabilitySlot[];
+}
+
+function formatAvailabilitySchedule(jsonText: string, timezone: string): FormattedSchedule {
+  let raw: RawAvailabilityResponse;
+  try {
+    raw = JSON.parse(jsonText);
+  } catch {
+    return { scheduleText: "No availability data found.", uniqueSlots: [] };
+  }
+
+  const slots = Array.isArray(raw.slots) ? raw.slots : [];
+  const seenStarts = new Set<string>();
+  const uniqueSlots: AvailabilitySlot[] = [];
+
+  for (const slot of slots) {
+    if (slot && typeof slot.start === "string" && typeof slot.end === "string") {
+      if (!seenStarts.has(slot.start)) {
+        seenStarts.add(slot.start);
+        uniqueSlots.push({
+          start: slot.start,
+          end: slot.end,
+          timezone,
+        });
+      }
+    }
+  }
+
+  if (uniqueSlots.length === 0) {
+    return { scheduleText: "No available openings found for the next 14 days.", uniqueSlots: [] };
+  }
+
+  const timeFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const dateFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+
+  const days = new Map<string, { label: string; items: Array<{ time: string; start: string; end: string }> }>();
+
+  for (const slot of uniqueSlots) {
+    const d = new Date(slot.start);
+    const dateKey = slot.start.slice(0, 10);
+    if (!days.has(dateKey)) {
+      days.set(dateKey, { label: dateFormatter.format(d), items: [] });
+    }
+    days.get(dateKey)!.items.push({
+      time: timeFormatter.format(d),
+      start: slot.start,
+      end: slot.end,
+    });
+  }
+
+  let scheduleText = `Available Openings Schedule (in ${timezone}):\n`;
+  for (const [dateKey, day] of days.entries()) {
+    scheduleText += `${day.label} (${dateKey}):\n`;
+    for (const item of day.items) {
+      scheduleText += `  - ${item.time} [start: "${item.start}", end: "${item.end}"]\n`;
+    }
+  }
+
+  return { scheduleText, uniqueSlots };
+}
+
 async function loadAvailability(timezone: string, env: Env): Promise<string> {
   if (!env.BOOKING_AVAILABILITY_URL) throw new Error("BOOKING_AVAILABILITY_URL is not configured");
   const from = currentDate(timezone);
@@ -216,26 +306,31 @@ async function loadAvailability(timezone: string, env: Env): Promise<string> {
 
 async function answer(message: string, timezone: string, env: Env): Promise<ChatAnswer> {
   if (!env.AI) throw new Error("Workers AI binding (AI) is not configured");
-  const availability = await loadAvailability(timezone, env);
+  const rawAvailability = await loadAvailability(timezone, env);
+  const { scheduleText } = formatAvailabilitySchedule(rawAvailability, timezone);
 
   const systemInstructions = `${SYSTEM_PROMPT}
 
 You MUST respond with ONLY a valid JSON object matching this schema:
 {
-  "message": "Friendly, concise conversational reply to the visitor answering their availability question",
+  "message": "Complete, conversational answer to the visitor mentioning specific dates and times.",
   "action": "show_availability" | "clarify" | "unsupported",
   "availableSlots": [
-    { "start": "YYYY-MM-DDTHH:MM:SS", "end": "YYYY-MM-DDTHH:MM:SS", "timezone": "${timezone}" }
+    { "start": "YYYY-MM-DDTHH:MM:SS+ZZ:ZZ", "end": "YYYY-MM-DDTHH:MM:SS+ZZ:ZZ", "timezone": "${timezone}" }
   ]
 }
-Include at most 4-6 convenient slots in availableSlots to keep the response concise.
-Do not wrap your response in markdown code blocks or add any text outside the JSON object.`;
+
+CRITICAL RULES:
+1. "message": Write a complete, friendly sentence or paragraph. Always state the specific days and times clearly (e.g. "I have openings on Monday, Sep 21 at 11:00 AM and 6:00 PM CDT."). NEVER end your message with a trailing colon, empty phrase, or cut off sentence like "Here are some options:".
+2. If the visitor asks for a date, time, or day of the week that has no openings (such as weekends, outside business hours, or fully booked days), explicitly explain in "message" that there are no openings for that requested time, and offer the closest upcoming openings from the schedule.
+3. In "availableSlots", include at most 4-6 matching slot objects directly from the schedule using the exact start, end, and timezone. If answering generally, pick 4-6 convenient upcoming openings. If the visitor is asking off-topic questions or no slots are relevant, use an empty array [].
+4. Only suggest openings that exist in the schedule below. NEVER invent or hallucinate dates, times, or slots.
+5. Do not wrap your response in markdown code blocks or add any text outside the JSON object.`;
 
   const userPrompt = `Visitor timezone: ${timezone}
 Current visitor date: ${currentDate(timezone)}
 
-Read-only availability JSON for the next 14 days:
-${availability}
+${scheduleText}
 
 Visitor message: ${message}`;
 
