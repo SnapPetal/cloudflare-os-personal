@@ -92,27 +92,56 @@ function extractJsonText(raw: string): string {
   return trimmed;
 }
 
-function parseChatAnswer(rawText: string): ChatAnswer {
-  let answer: unknown;
-  try {
-    answer = JSON.parse(extractJsonText(rawText));
-  } catch {
+function parseChatAnswer(data: unknown): ChatAnswer {
+  let value: Record<string, unknown> | null = null;
+  if (typeof data === "string") {
+    try {
+      const parsed = JSON.parse(extractJsonText(data));
+      if (parsed && typeof parsed === "object") {
+        value = parsed as Record<string, unknown>;
+      }
+    } catch {
+      const msgMatch = data.match(/"message"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      if (msgMatch) {
+        try {
+          return {
+            message: JSON.parse(`"${msgMatch[1]}"`),
+            action: "show_availability",
+            availableSlots: [],
+          };
+        } catch {
+          return {
+            message: msgMatch[1],
+            action: "show_availability",
+            availableSlots: [],
+          };
+        }
+      }
+      return {
+        message: data.trim(),
+        action: "show_availability",
+        availableSlots: [],
+      };
+    }
+  } else if (data && typeof data === "object") {
+    const obj = data as Record<string, unknown>;
+    if (obj.response && typeof obj.response === "object") {
+      value = obj.response as Record<string, unknown>;
+    } else if (typeof obj.response === "string") {
+      return parseChatAnswer(obj.response);
+    } else {
+      value = obj;
+    }
+  }
+
+  if (!value) {
     return {
-      message: rawText.trim(),
+      message: typeof data === "string" ? data.trim() : "Here are the available times.",
       action: "show_availability",
       availableSlots: [],
     };
   }
 
-  if (!answer || typeof answer !== "object") {
-    return {
-      message: rawText.trim(),
-      action: "show_availability",
-      availableSlots: [],
-    };
-  }
-
-  const value = answer as Record<string, unknown>;
   const rawSlots = Array.isArray(value.availableSlots) ? value.availableSlots : [];
   const validSlots: AvailabilitySlot[] = [];
   for (const slot of rawSlots) {
@@ -138,7 +167,7 @@ function parseChatAnswer(rawText: string): ChatAnswer {
       : "show_availability";
 
   return {
-    message: typeof value.message === "string" ? value.message : rawText.trim(),
+    message: typeof value.message === "string" ? value.message : "Here are the available times.",
     action,
     availableSlots: validSlots,
   };
@@ -199,6 +228,7 @@ You MUST respond with ONLY a valid JSON object matching this schema:
     { "start": "YYYY-MM-DDTHH:MM:SS", "end": "YYYY-MM-DDTHH:MM:SS", "timezone": "${timezone}" }
   ]
 }
+Include at most 4-6 convenient slots in availableSlots to keep the response concise.
 Do not wrap your response in markdown code blocks or add any text outside the JSON object.`;
 
   const userPrompt = `Visitor timezone: ${timezone}
@@ -215,19 +245,11 @@ Visitor message: ${message}`;
       { role: "system", content: systemInstructions },
       { role: "user", content: userPrompt },
     ],
-    max_tokens: 600,
+    max_tokens: 1024,
     temperature: 0.2,
   });
 
-  const responseText =
-    typeof result === "string"
-      ? result
-      : typeof result === "object" && result && "response" in result && typeof (result as any).response === "string"
-        ? (result as any).response
-        : JSON.stringify(result);
-
-  if (!responseText) throw new Error("Workers AI response did not contain text");
-  return parseChatAnswer(responseText);
+  return parseChatAnswer(result);
 }
 
 export default {
