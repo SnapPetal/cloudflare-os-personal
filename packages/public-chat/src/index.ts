@@ -1,5 +1,5 @@
 interface Env {
-  AI?: Ai;
+  AI?: Pick<Ai, "run">;
   AI_MODEL?: string;
   BOOKING_AVAILABILITY_URL?: string;
   CHAT_RATE_LIMITER?: RateLimit;

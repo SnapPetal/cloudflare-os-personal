@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { dirname, join, relative, resolve } from "node:path";
+import { delimiter, dirname, join, relative, resolve } from "node:path";
 import { parse, printParseErrorCode, type ParseError } from "jsonc-parser";
 import { pnpmCommand } from "../cloudflare-os/scripts/pnpm-command.ts";
 import { resolveBinEntry } from "../cloudflare-os/scripts/bin-entry.ts";
@@ -732,8 +732,17 @@ function runCommand(
 // shim Node refuses to spawn without a shell, and `shell: true` would re-split argv and break any
 // checkout path containing a space.
 function run(args: string[], cwd = root, env: NodeJS.ProcessEnv = process.env): void {
-  const [command, argv] = pnpmCommand(args, env);
-  runCommand(command, argv, cwd, env, `pnpm ${args.join(" ")}`);
+  const commandEnv =
+    args[0] === "--dir" && args[1] === "cloudflare-os"
+      ? {
+          ...env,
+          PATH: [join(root, "cloudflare-os", "node_modules", ".bin"), env.PATH]
+            .filter(Boolean)
+            .join(delimiter),
+        }
+      : env;
+  const [command, argv] = pnpmCommand(args, commandEnv);
+  runCommand(command, argv, cwd, commandEnv, `pnpm ${args.join(" ")}`);
 }
 
 /**
