@@ -290,9 +290,11 @@ test("gives the router the public route, the frontend, and every service binding
   // The base config carries the ASSETS binding, SPA fallback, and /gatekeeper/* prefix an OAuth
   // Gatekeeper redirect needs. The deployment adds the private vector admin routes.
   assert.deepEqual(generated.router.assets!.run_worker_first, [
-    ...(bases.router.assets!.run_worker_first ?? []),
-    "/vector-store",
-    "/vector-store/*",
+    ...new Set([
+      ...(bases.router.assets!.run_worker_first ?? []),
+      "/vector-store",
+      "/vector-store/*",
+    ]),
   ]);
   assert.equal(generated.router.assets!.binding, "ASSETS");
   assert.equal(generated.router.assets!.directory, "../workshop-frontend/dist");
