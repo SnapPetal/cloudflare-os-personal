@@ -287,9 +287,13 @@ test("gives the router the public route, the frontend, and every service binding
     { binding: "GATEKEEPER_SCHEDULER", service: "acme-cloudflare-os-scheduler" },
     { binding: "GATEKEEPER_CUSTOM", service: "acme-cloudflare-os-custom" },
   ]);
-  // Inherited untouched: the base config already carries the ASSETS binding, the SPA fallback, and
-  // the /gatekeeper/* prefix an OAuth Gatekeeper redirect needs.
-  assert.deepEqual(generated.router.assets, bases.router.assets);
+  // The base config carries the ASSETS binding, SPA fallback, and /gatekeeper/* prefix an OAuth
+  // Gatekeeper redirect needs. The deployment adds the private vector admin routes.
+  assert.deepEqual(generated.router.assets!.run_worker_first, [
+    ...(bases.router.assets!.run_worker_first ?? []),
+    "/vector-store",
+    "/vector-store/*",
+  ]);
   assert.equal(generated.router.assets!.binding, "ASSETS");
   assert.equal(generated.router.assets!.directory, "../workshop-frontend/dist");
   assert.ok(generated.router.assets!.run_worker_first!.includes("/gatekeeper/*"),
