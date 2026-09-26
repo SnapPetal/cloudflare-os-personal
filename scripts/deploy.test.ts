@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { parse, type ParseError } from "jsonc-parser";
-import { aiGatewayPlan, buildCommands, generateConfigs, validateConfig } from "./deploy.ts";
+import {
+  aiGatewayPlan,
+  buildCommands,
+  deploymentLogEntry,
+  generateConfigs,
+  validateConfig,
+} from "./deploy.ts";
 import type {
   BaseConfigs,
   DeploymentConfig,
@@ -643,4 +649,35 @@ test("skips the Error Reporter build when error reporting is disabled", () => {
   });
   const commands = buildCommands(config).map(({ args }) => args.join(" "));
   assert.equal(commands.some((command) => command.includes("error-reporter")), false);
+});
+
+test("records each deployed Worker and version, and the commits behind them", () => {
+  const entry = deploymentLogEntry({
+    timestamp: "2026-09-26 23:47",
+    rootCommit: "25dd0ed12345",
+    submoduleCommit: "270ca7c5badf",
+    versions: [
+      ["acme-os-errors", "aaaaaaaa-1111-2222-3333-444444444444"],
+      ["acme-os-router", "bbbbbbbb-1111-2222-3333-444444444444"],
+    ],
+  });
+  // The rollback targets, one row per Worker, in the order they were deployed.
+  assert.match(entry, /\| `acme-os-errors` \| `aaaaaaaa-1111-2222-3333-444444444444` \|/);
+  assert.match(entry, /\| `acme-os-router` \| `bbbbbbbb-1111-2222-3333-444444444444` \|/);
+  // Which cloudflare-os produced this code is not recoverable from the gitlink after the fact.
+  assert.match(entry, /Root `25dd0ed12345`, submodule `270ca7c5badf`/);
+  // Stamped UTC, so the entry means one thing to every reader.
+  assert.match(entry, /^## 2026-09-26 23:47 UTC$/m);
+  // Appended whole, so the next entry starts on its own line.
+  assert.ok(entry.endsWith("\n\n"));
+});
+
+test("records a partial deployment rather than dropping what did ship", () => {
+  const entry = deploymentLogEntry({
+    timestamp: "2026-09-26 18:47",
+    rootCommit: "25dd0ed",
+    submoduleCommit: "270ca7c5",
+    versions: [["acme-os-errors", "aaaaaaaa-1111-2222-3333-444444444444"]],
+  });
+  assert.equal(entry.includes("acme-os-router"), false);
 });

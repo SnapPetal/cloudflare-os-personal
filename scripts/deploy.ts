@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { delimiter, dirname, join, relative, resolve } from "node:path";
@@ -749,16 +749,109 @@ function run(args: string[], cwd = root, env: NodeJS.ProcessEnv = process.env): 
  * `wrangler deploy` for one package, spawned as `node <entry>` when the entry point behind the
  * `.bin` shim can be found. That saves the ~0.33s `pnpm exec` costs per call and sidesteps the
  * Windows `.cmd` shim entirely; when it cannot be resolved, the pnpm path is still there.
+ *
+ * Output is captured and replayed rather than inherited, because the deployment log needs the
+ * version id wrangler prints and an inherited stream cannot be read. A dry run prints none, which
+ * is what keeps `pnpm check` from writing a log entry for a deployment that never happened.
  */
-function deployWorker(dir: string, extraArgs: string[]): void {
+function deployWorker(dir: string, extraArgs: string[]): [worker: string, versionId: string] | null {
   const cwd = join(root, dir);
   const args = ["deploy", "--config", generatedName, ...extraArgs];
-  const entry = resolveBinEntry(cwd, "wrangler");
-  if (entry) {
-    runCommand(process.execPath, [entry, ...args], cwd, process.env, `wrangler ${args.join(" ")}`);
-  } else {
-    run(["exec", "wrangler", ...args], cwd);
+  const [command, argv, env] = wranglerCommand(cwd, args);
+  const result = spawnSync(command, argv, { cwd, env, encoding: "utf8" });
+  if (result.error) throw result.error;
+  process.stdout.write(result.stdout ?? "");
+  process.stderr.write(result.stderr ?? "");
+  if (result.status !== 0) {
+    throw new Error(`${relative(root, cwd) || "."}: wrangler ${args.join(" ")} failed. ` +
+      "Its output is above.");
   }
+  // Read the deployed name out of wrangler's own output rather than deriving it: the log is only
+  // worth keeping if the names in it are the names Cloudflare is serving.
+  const output = result.stdout ?? "";
+  const worker = /Uploaded (\S+) \([\d.]+ sec\)/.exec(output)?.[1];
+  const versionId = /Current Version ID: ([0-9a-f-]{36})/.exec(output)?.[1];
+  return worker && versionId ? [worker, versionId] : null;
+}
+
+function wranglerCommand(
+  cwd: string,
+  args: string[],
+): [string, string[], NodeJS.ProcessEnv] {
+  const entry = resolveBinEntry(cwd, "wrangler");
+  if (entry) return [process.execPath, [entry, ...args], process.env];
+  const commandEnv = {
+    ...process.env,
+    PATH: [join(cwd, "node_modules", ".bin"), process.env.PATH].filter(Boolean).join(delimiter),
+  };
+  const [command, argv] = pnpmCommand(["exec", "wrangler", ...args], commandEnv);
+  return [command, argv, commandEnv];
+}
+
+/**
+ * One entry in `docs/deployments.md`: what went out, and the commits it went out from.
+ *
+ * The version ids are the point. They are the rollback targets for whatever deploys next, and
+ * nothing else in the repository records them -- `wrangler versions list` can look them up again,
+ * but only while Cloudflare still lists them and only if you know to ask. The commits are the other
+ * half: which `cloudflare-os` produced this code, which the gitlink alone would not tell you after
+ * the fact.
+ *
+ * Newest first, because the entry anyone wants is the last deploy, not the first.
+ */
+export function deploymentLogEntry(input: {
+  timestamp: string;
+  rootCommit: string;
+  submoduleCommit: string;
+  versions: Array<[worker: string, versionId: string]>;
+}): string {
+  const lines = [
+    // UTC, because that is what Cloudflare's own version metadata uses and what `wrangler versions
+    // list` will hand back; a local-time entry is ambiguous the moment anyone reads it from another
+    // timezone, and there is no tzdata in a Worker to convert it later.
+    `## ${input.timestamp} UTC`,
+    "",
+    `Root \`${input.rootCommit}\`, submodule \`${input.submoduleCommit}\`.`,
+    "",
+    "| Worker | Version ID |",
+    "| --- | --- |",
+    ...input.versions.map(([worker, versionId]) => `| \`${worker}\` | \`${versionId}\` |`),
+    "",
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
+const deploymentLogHeader = `# Deployments
+
+Newest first. Appended by \`pnpm deploy\` itself, so it cannot drift from what actually shipped.
+Each entry's version IDs are the rollback targets for the entry below it; see
+\`pnpm exec wrangler rollback <version-id> --name <worker>\`.
+`;
+
+async function appendDeploymentLog(versions: Array<[string, string]>): Promise<void> {
+  const [head, submodule] = await Promise.all([
+    gitOutput(["rev-parse", "HEAD"]),
+    gitOutput(["rev-parse", "HEAD"], join(root, "cloudflare-os")),
+  ]);
+  const path = join(root, "docs", "deployments.md");
+  const existing = existsSync(path) ? await readFile(path, "utf8") : deploymentLogHeader;
+  const entry = deploymentLogEntry({
+    timestamp: new Date().toISOString().replace("T", " ").slice(0, 16),
+    rootCommit: head.slice(0, 12),
+    submoduleCommit: submodule.slice(0, 12),
+    versions,
+  });
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${existing.trimEnd()}\n\n${entry}`);
+  console.log(`\nRecorded this deployment in ${relative(root, path)}.`);
+}
+
+function gitOutput(args: string[], cwd = root): string {
+  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+  if (result.status !== 0) {
+    throw new Error(`git ${args.join(" ")} failed in ${relative(root, cwd) || "."}.`);
+  }
+  return result.stdout.trim();
 }
 
 function requireSubmodule(): void {
@@ -819,17 +912,24 @@ async function main(): Promise<void> {
     if (check) run(["test"]);
     build(config);
     const deployArgs = check ? ["--dry-run"] : [];
+    const deployed: Array<[worker: string, versionId: string]> = [];
+    const deployOne = (dir: string) => {
+      const version = deployWorker(dir, deployArgs);
+      if (version) deployed.push(version);
+    };
     if (config.errorReporting.enabled) {
-      deployWorker(packageDirs.errorReporter, deployArgs);
+      deployOne(packageDirs.errorReporter);
     }
-    deployWorker(packageDirs.publicChat, deployArgs);
-    deployWorker(packageDirs.s3vExplorer, deployArgs);
-    deployWorker(packageDirs.context, deployArgs);
-    deployWorker(packageDirs.scheduler, deployArgs);
-    deployWorker(packageDirs.customGatekeeper, deployArgs);
-    deployWorker(packageDirs.workshop, deployArgs);
+    deployOne(packageDirs.publicChat);
+    deployOne(packageDirs.s3vExplorer);
+    deployOne(packageDirs.context);
+    deployOne(packageDirs.scheduler);
+    deployOne(packageDirs.customGatekeeper);
+    deployOne(packageDirs.workshop);
     // Last: it binds every one of the above.
-    deployWorker(packageDirs.router, deployArgs);
+    deployOne(packageDirs.router);
+    // A dry run reports no versions, and an entry with holes in it is worse than none.
+    if (!check && deployed.length > 0) await appendDeploymentLog(deployed);
   } finally {
     await Promise.all(Object.values(generatedPaths).map((path) => rm(path, { force: true })));
   }
