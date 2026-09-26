@@ -821,11 +821,19 @@ export function deploymentLogEntry(input: {
   return `${lines.join("\n")}\n`;
 }
 
+// Only used when docs/deployments.md is missing. A CI deploy cannot write this file back -- the
+// workflow holds `contents: read` -- so entries from push-triggered runs are added by hand from the
+// run log. The file says so; keep the two in step.
 const deploymentLogHeader = `# Deployments
 
-Newest first. Appended by \`pnpm deploy\` itself, so it cannot drift from what actually shipped.
-Each entry's version IDs are the rollback targets for the entry below it; see
-\`pnpm exec wrangler rollback <version-id> --name <worker>\`.
+Newest first, timestamps UTC. Each entry's version IDs are the rollback targets for the entry below
+it; see \`pnpm exec wrangler rollback <version-id> --name <worker>\`.
+
+Local \`pnpm deploy\` runs append their own entry, from the version IDs wrangler reports. **CI
+deploys do not** — \`.github/workflows/deploy.yml\` runs \`pnpm deploy\` on every push to \`main\`, and
+the runner cannot commit the file back, so a CI-deployed entry has to be added by hand from the run
+log. Every deployment lands here eventually; a gap means a deploy is not yet written down, not that
+it did not happen.
 `;
 
 async function appendDeploymentLog(versions: Array<[string, string]>): Promise<void> {

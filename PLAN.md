@@ -23,13 +23,13 @@ Cloudflare OS will not replace the personal-website container, Docker Compose, E
 
 ## Phase 1 — Deploy the workspace
 
-- [ ] Create a private GitHub repository named `cloudflare-os-personal`.
-- [ ] Use `cloudflare-os-starter` as the deployment wrapper.
-- [ ] Pin the upstream Cloudflare OS submodule to a reviewed commit.
-- [ ] Configure the Cloudflare account ID and Worker names in `deployment.jsonc`.
-- [ ] Create a Cloudflare Access application for `os.thonbecker.biz`.
-- [ ] Deploy with `pnpm check` and `pnpm deploy`.
-- [ ] Confirm login, `/admin`, KV, R2, and Worker logs.
+- [x] Create a private GitHub repository named `cloudflare-os-personal`.
+- [x] Use `cloudflare-os-starter` as the deployment wrapper.
+- [x] Pin the upstream Cloudflare OS submodule to a reviewed commit.
+- [x] Configure the Cloudflare account ID and Worker names in `deployment.jsonc`.
+- [x] Create a Cloudflare Access application for `os.thonbecker.biz`.
+- [x] Deploy with `pnpm check` and `pnpm deploy`.
+- [x] Confirm login, `/admin`, KV, R2, and Worker logs.
 
 ## Phase 2 — Define a safe personal-website API
 
@@ -77,12 +77,16 @@ The Gatekeeper must record the proposed action, affected resource, user, timesta
 
 ## Phase 6 — CI/CD
 
-- [ ] Store the Cloudflare API token in GitHub Actions secrets.
-- [ ] Run `pnpm check` on pull requests.
-- [ ] Run `pnpm deploy` only from `main`.
+- [x] Store the Cloudflare API token in GitHub Actions secrets.
+- [x] Run `pnpm check` on pull requests.
+- [x] Run `pnpm deploy` only from `main`.
 - [ ] Keep personal-website deployment in its existing Lightsail workflow.
-- [ ] Pin and review Cloudflare OS upgrades before changing the submodule.
-- [ ] Keep a rollback procedure using Worker deployment history.
+- [x] Pin and review Cloudflare OS upgrades before changing the submodule.
+- [x] Keep a rollback procedure using Worker deployment history.
+
+Deploying on every push to `main` is the current CI behavior, so merging to `main` is itself the
+production approval. Version IDs and rollback targets are recorded in
+[`docs/deployments.md`](docs/deployments.md).
 
 ## Cutover strategy
 

@@ -212,12 +212,15 @@ Prefer wrapper-owned Workers and [service bindings](https://developers.cloudflar
 
 ## Upgrade
 
-1. Record the current `cloudflare-os` gitlink for rollback.
+0. Run `pnpm sync:upstream` first. If the fork is not behind `upstream/main`, stop — there is nothing
+   to do. The full procedure is in [Upstream sync](upstream-sync.md).
+1. Record the current `cloudflare-os` gitlink for rollback, and read the current version IDs out of
+   [`docs/deployments.md`](deployments.md) before anything deploys.
 2. Update the submodule to the intended commit in the personal fork, after reviewing the corresponding upstream changes.
 3. Review Workshop and Context Wrangler base-config changes and Gatekeeper contracts.
 4. Diff `cloudflare-os/pnpm-workspace.yaml`'s `catalog:` against this repository's and re-sync it. Two submodule packages are members of this workspace and resolve `catalog:` here, so a missing entry fails the install and a *stale* one silently gives the tree two copies of `capnweb` — a failure that only appears once the two installs are separate, as they are in CI.
 5. Run `pnpm install`, `pnpm --dir cloudflare-os install`, `pnpm lint`, and `pnpm check`.
-6. Deploy and verify Access, administrator access, storage, configured AI, Context, custom observations, and the Error Reporter query surface.
-7. If needed, restore the previous gitlink and redeploy, or use [Workers rollback](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/) when bindings remain compatible.
+6. Deploy and verify Access, administrator access, storage, configured AI, Context, custom observations, and the Error Reporter query surface. Note that pushing to `main` deploys on its own — see [TROUBLESHOOTING](../TROUBLESHOOTING.md#every-push-to-main-deploys).
+7. If needed, restore the previous gitlink and redeploy, or use [Workers rollback](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/) when bindings remain compatible. Roll the Workshop before the router; the reverse breaks `/admin`.
 
 Do not update the submodule blindly. The deployment script derives from the fork's configs so incompatible base changes remain visible during review and checks.

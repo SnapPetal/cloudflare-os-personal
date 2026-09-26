@@ -9,6 +9,24 @@ Keep those updates separate. A parent merge must never replace the submodule git
 unreviewed upstream branch, and a submodule update must never be treated as a complete parent
 upgrade until the wrapper and shared dependency catalog have been checked.
 
+## Check before starting
+
+`pnpm sync:upstream` reports the divergence without changing anything, which is the first thing to
+run and safe to run at any time:
+
+```sh
+pnpm sync:upstream
+```
+
+It fetches `upstream` in the nested fork, reports how far `personal/admin-ui` is behind or ahead,
+confirms the parent gitlink matches the fork's tip, lists unpushed commits, and verifies the parent
+catalog still matches the fork's. Nothing else moves. Use it as the standing answer to "is the pin
+current?" — including from the weekly automation, which runs it and stays silent unless the fork is
+behind.
+
+The manual steps below are still the procedure; the script just removes the guesswork about whether
+there is anything to do.
+
 ## Prepare an upgrade branch
 
 Start with a clean `main` worktree:
@@ -44,6 +62,12 @@ git add cloudflare-os
 
 Never use `git submodule update --remote`; the parent must record a reviewed full SHA.
 
+**Prefer merging upstream over rebasing onto it.** The fork carries personal commits on top of
+upstream; merging keeps them and moves the base, while a rebase rewrites every one of them. When the
+personal commits are already linear on `upstream/main` with nothing to replay, git will refuse the
+rebase outright as a no-op — that is the expected result, not a failure, and it means the pin is
+already current.
+
 ## Reconcile the parent wrapper
 
 Review the parent starter changes against the current fork:
@@ -73,9 +97,17 @@ when installation succeeds.
 ## Merge and deploy
 
 Open a pull request from the upgrade branch. Merge it into `main` only after the full check passes
-and the generated Wrangler dry-runs show every expected Worker and binding. Production deployment
-is a separate approval step: record the old gitlink, Worker version IDs, routes, resource identities,
-secrets, and rollback limits before running `pnpm deploy`.
+and the generated Wrangler dry-runs show every expected Worker and binding.
+
+Merging to `main` deploys. `.github/workflows/deploy.yml` runs `pnpm check` then `pnpm deploy` on
+every push to `main`, so a merge — including one that only changes documentation — reaches
+production on its own. Review the diff as a production change, not just as a code change.
+
+Production deployment is also a separate approval step: record the old gitlink, Worker version IDs,
+routes, resource identities, secrets, and rollback limits before running `pnpm deploy` locally. A
+local run appends its own entry to [`docs/deployments.md`](deployments.md); a CI run does not, so
+recover those version IDs from the run log and add the entry by hand. Workshop and the router roll
+back as a pair — see the rollback boundaries in that file.
 
 For this fork, the expected parent deployment includes the router, Workshop, Context, Scheduler,
 Custom Gatekeeper, Error Reporter, public chat, and S3 Vector Explorer.

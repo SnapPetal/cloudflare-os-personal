@@ -57,7 +57,7 @@ This repository adds deployment controls around a pinned [Cloudflare OS](https:/
 | Data | Existing KV/R2 resources or [automatic provisioning](https://developers.cloudflare.com/workers/wrangler/configuration/#automatic-provisioning) |
 | Integrations | Wrapper-owned Gatekeepers and service bindings without patching upstream |
 | AI | A [Workers AI](https://developers.cloudflare.com/workers-ai/) model catalog through [AI Gateway](https://developers.cloudflare.com/ai-gateway/) out of the box, with no API token; which providers and which gateway |
-| Operations | [Structured logs, traces, explicit error reports](docs/observability.md), validation, deployment order, and upgrades |
+| Operations | [Structured logs, traces, explicit error reports](docs/observability.md), validation, deployment order, [deployment log and rollback](docs/deployments.md), and upgrades |
 
 ### Architecture
 
@@ -194,7 +194,8 @@ through the `/vector-store` service binding.
 
 - Stream production events with [`wrangler tail`](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/).
 - Triage explicit failures and choose export destinations with the [observability guide](docs/observability.md).
-- Roll a Worker back from its dashboard deployment history or with [`wrangler rollback`](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/).
+- Find the version IDs to roll back to in the [deployment log](docs/deployments.md), then roll a Worker back with [`wrangler rollback`](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/). The Workshop and the router roll back as a pair; the reasons are in that log.
+- Check whether the pinned submodule is behind upstream with `pnpm sync:upstream`, which reports without changing anything.
 - Follow the [upgrade checklist](docs/customization.md#upgrade) before changing the pinned submodule.
 - Follow the [upstream sync workflow](docs/upstream-sync.md) when updating either fork layer.
 - Review the upstream Cloudflare OS documentation and release history before adopting behavior changes.

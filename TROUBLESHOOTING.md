@@ -39,6 +39,38 @@ The Cloudflare dashboard's **Workers & Pages → Create → Connect GitHub** flo
 
 For repeatable deployments, run the same commands from a local checkout or from GitHub Actions after authenticating Wrangler. The repository's deploy script is the source of truth.
 
+## Every push to main deploys
+
+`.github/workflows/deploy.yml` triggers on every push to `main` as well as `workflow_dispatch`. It
+runs `pnpm check` and then `pnpm deploy` against production with `secrets.CLOUDFLARE_API_TOKEN`.
+
+Consequences worth knowing before you push:
+
+- A documentation-only commit still deploys all eight Workers. Review a diff as a production change.
+- CI holds `contents: read`, so it cannot append to [`docs/deployments.md`](docs/deployments.md).
+  Those version IDs have to be recovered from the run log and added by hand.
+- A failed check blocks the deploy, which is the point of the gate. A green run means production moved
+  to that commit.
+
+To confirm what a push did:
+
+```sh
+gh run list -R SnapPetal/cloudflare-os-personal --workflow=deploy.yml --limit 5
+```
+
+## Rolling back
+
+Version IDs for every deployment are in [`docs/deployments.md`](docs/deployments.md), newest first. The
+entry below the current one holds the targets.
+
+```sh
+pnpm exec wrangler rollback <version-id> --name <worker> -m "reason"
+```
+
+Two boundaries, both explained in that file: the Workshop and the router roll back as a pair, and a
+version rollback restores code only — not Access policies, DNS, bindings, secrets, or Durable Object
+data.
+
 ## R2 is not enabled
 
 Error:
