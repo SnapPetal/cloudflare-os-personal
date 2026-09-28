@@ -11,7 +11,7 @@
     "@aws-sdk/client-s3vectors": "^3.1137.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260702.1",
+    "@cloudflare/workers-types": "^5.20260925.1",
     "typescript": "catalog:",
     "wrangler": "^4.136.1"
   }
