@@ -38,7 +38,7 @@ catalog:
   vite: 7.3.6
   vite-plus: ^0.2.8
   vitest: ^4.1.11
-  wrangler: ^4.138.0
+  wrangler: ^4.140.0
   zod: ^4.5.4
 
 overrides:
