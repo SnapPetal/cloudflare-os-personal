@@ -1,55 +1,6 @@
+# Dependabot is intentionally disabled on this fork.
+# Dependency maintenance happens upstream at cloudflare/cloudflare-os-starter;
+# this fork tracks upstream and only carries personal wrapper changes.
+# See docs/upstream-sync.md for the sync workflow.
 version: 2
-updates:
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "04:00"
-      timezone: "America/Chicago"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "cloudflare"
-    commit-message:
-      prefix: "chore(deps)"
-      prefix-development: "chore(deps-dev)"
-    groups:
-      cloudflare:
-        patterns:
-          - "@cloudflare/*"
-          - "wrangler"
-      testing-and-linting:
-        patterns:
-          - "vitest*"
-          - "oxlint*"
-          - "@types/node"
-      minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
-    ignore:
-      # vite 7.3.6 is pinned exact for capnweb-validate decorator support with esbuild
-      - dependency-name: "vite"
-        update-types: ["version-update:semver-major"]
-      # @cloudflare/vitest-pool-workers requires vitest 4.x
-      - dependency-name: "vitest"
-        update-types: ["version-update:semver-major"]
-
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "04:00"
-      timezone: "America/Chicago"
-    open-pull-requests-limit: 3
-    labels:
-      - "dependencies"
-      - "ci"
-    commit-message:
-      prefix: "chore(ci)"
-    groups:
-      actions:
-        patterns:
-          - "*"
+updates: []
