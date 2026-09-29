@@ -3,4 +3,16 @@
 # this fork tracks upstream and only carries personal wrapper changes.
 # See docs/upstream-sync.md for the sync workflow.
 version: 2
-updates: []
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    enabled: false
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    enabled: false
