@@ -35,21 +35,25 @@ const generatedPaths = Object.fromEntries(
 const defaultContextArtifactsNamespace = "gatekeeper-context-collections";
 
 // Newest date every Wrangler that deploys a Worker here will apply.
-// public-chat and s3v-explorer use wrangler 4.136.1; the submodule Workers use 4.138.0.
-// Both ship workerd 1.20260921.1, whose newest date is 2026-09-21. Root wrangler 4.139.0
-// knows 2026-09-23, but it does not deploy those Workers. 2026-10-10 is past all of them,
-// and durable_object_io_tasks_prevent_eviction (default 2026-10-01) is not in this workerd.
+// Parent Workers (public chat, s3v explorer, custom gatekeeper, error reporter) use the catalog
+// Wrangler, currently 4.149.0, whose workerd 1.20261006.1 newest date is 2026-10-06.
+// Submodule Workers use the fork's Wrangler 4.147.0, whose workerd 1.20261001.1 newest date is
+// 2026-10-01. 2026-10-06 is past that workerd, so the shared date stops at 2026-10-01.
 // Stamped onto every generated Worker, including the four whose wrangler files live in the
 // pinned submodule, so those upstream files stay at their own date.
 //
-// Changes from the live dates (2026-08-04, 2026-08-08, 2026-09-04) through 2026-09-21:
+// Changes from the live dates (2026-08-04, 2026-08-08, 2026-09-04) through 2026-10-01:
 // - nodejs_compat and nodejs_compat_v2 already default as of 2026-08-04.
 // - workflows_enable_fast_engine_creation (2026-08-11) only affects Workflow bindings.
 //   None of these Workers declare one. The submodule Workers were already past this date.
 // - python_workers_314 (2026-09-08) applies only when the Worker is a Python Worker.
 // - spec_compliant_dispatch_exceptions (2026-09-15) reports event-listener exceptions
 //   instead of aborting dispatch. fetch and scheduled handlers still propagate.
-export const COMPATIBILITY_DATE = "2026-09-21";
+// - durable_object_io_tasks_prevent_eviction (2026-10-01) keeps a Durable Object in memory
+//   while pending I/O, service-binding calls, RPC, waitUntil, and timers are outstanding,
+//   up to 15 minutes per operation. Workshop, Context, and Scheduler Durable Objects pick
+//   this up. Opt out with durable_object_io_tasks_do_not_prevent_eviction.
+export const COMPATIBILITY_DATE = "2026-10-01";
 const accountIdPattern = /^[a-f\d]{32}$/i;
 
 const requiredPaths = [

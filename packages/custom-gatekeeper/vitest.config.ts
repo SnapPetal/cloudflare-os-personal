@@ -8,7 +8,7 @@ export default defineConfig({
     cloudflareTest({
       main: "./__tests__/worker.ts",
       miniflare: {
-        compatibilityDate: "2026-09-21",
+        compatibilityDate: "2026-10-01",
         compatibilityFlags: ["allow_irrevocable_stub_storage", "nodejs_compat"],
       },
     }),
