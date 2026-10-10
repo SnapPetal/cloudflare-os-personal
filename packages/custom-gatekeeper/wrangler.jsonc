@@ -1,13 +1,14 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "custom-gatekeeper",
+  "name": "thonbecker-personal-os-gatekeeper",
   "main": ".wrangler/validate/src/index.ts",
   "build": {
     "command": "pnpm exec capnweb-validate build --out .wrangler/validate",
     "watch_dir": "src"
   },
-  "compatibility_date": "2026-08-04",
+  "compatibility_date": "2026-09-21",
   "compatibility_flags": ["allow_irrevocable_stub_storage", "nodejs_compat"],
+  "workers_dev": false,
   "migrations": [
     {
       "tag": "v0",
@@ -21,6 +22,7 @@
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,
-    "logs": { "invocation_logs": false }
+    "logs": { "invocation_logs": true },
+    "traces": { "enabled": true, "head_sampling_rate": 0.1 }
   }
 }

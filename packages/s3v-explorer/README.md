@@ -8,7 +8,7 @@ The data plane remains Amazon S3 Vectors. Cloudflare R2 is not a vector-index re
 
 ```sh
 pnpm install
-pnpm --filter s3v-explorer types:check
+pnpm --filter thonbecker-s3v-explorer types:check
 pnpm exec wrangler dev packages/s3v-explorer/wrangler.jsonc
 ```
 

@@ -30,7 +30,7 @@
       "route": { "customDomain": "chat.thonbecker.biz" }
     },
     "s3vExplorer": {
-      "name": "s3v-explorer",
+      "name": "thonbecker-s3v-explorer",
       "route": { "workersDev": false }
     },
     "context": { "name": "thonbecker-personal-os-context" },
@@ -139,6 +139,6 @@
     "enabled": true,
     "headSamplingRate": 1,
     "logs": { "invocationLogs": true },
-    "traces": { "enabled": false, "headSamplingRate": 0.1 }
+    "traces": { "enabled": true, "headSamplingRate": 0.1 }
   }
 }

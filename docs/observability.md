@@ -18,13 +18,13 @@ flowchart LR
 
 ## Choose the signal
 
-| Signal | Best for | Produced by | Starter default |
+| Signal | Best for | Produced by | This deployment |
 | --- | --- | --- | --- |
 | Structured application logs | Lifecycle, decisions, handled degradation, debugging | Producer Worker `console.*` calls | Enabled |
 | Uncaught exceptions | Crashes not handled by application code | Workers runtime | Enabled |
 | Explicit issue reports | Known failure sites that deserve cross-service triage | Upstream `reportIssue()` calls through RPC | Enabled for the Workshop backend |
-| Invocation logs | One runtime record per invocation | Workers runtime | Disabled to control volume |
-| Automatic traces | Timing and dependency paths across bindings/storage | Workers runtime | Disabled until sampling is chosen |
+| Invocation logs | One runtime record per invocation | Workers runtime | Enabled |
+| Automatic traces | Timing and dependency paths across bindings/storage | Workers runtime | Enabled, head sampling 0.1 |
 | Browser reports | Trusted first-party UI exceptions | Same-origin browser endpoint | Disabled |
 | Source maps | Mapping generated stack frames to source | Wrangler/build pipeline | Destination-specific |
 
@@ -79,20 +79,22 @@ The Error Reporter intentionally flattens the normalized event and trusted produ
 
 ## Sampling and traces
 
-The deployment controls apply consistently to the Workshop, Context, Scheduler, custom Gatekeeper, and Error Reporter:
+The deployment controls apply to every Worker: the router, Workshop, Context, Scheduler, custom Gatekeeper, Error Reporter, public chat, and `thonbecker-s3v-explorer`:
 
 ```jsonc
 "observability": {
   "enabled": true,
   "headSamplingRate": 1,
-  "logs": { "invocationLogs": false },
-  "traces": { "enabled": false, "headSamplingRate": 0.1 }
+  "logs": { "invocationLogs": true },
+  "traces": { "enabled": true, "headSamplingRate": 0.1 }
 }
 ```
 
+`deployment.jsonc` is the source of truth for `workers_dev` and `logs.invocationLogs`. The deploy script copies both onto every generated Worker, and each package `wrangler.jsonc` repeats the same values so a direct Wrangler command cannot drift from production.
+
 - `headSamplingRate` accepts `0` through `1` and controls eligible observability telemetry.
-- `logs.invocationLogs` adds runtime invocation records. Keep it off unless those records answer a question your structured application logs cannot.
-- `traces.enabled` turns on [automatic tracing](https://developers.cloudflare.com/workers/observability/traces/). Start with a measured sample such as `0.1`, inspect volume and usefulness, then tune it.
+- `logs.invocationLogs` adds runtime invocation records. This deployment keeps them on.
+- `traces.enabled` turns on [automatic tracing](https://developers.cloudflare.com/workers/observability/traces/) for every Worker. The sample is `0.1`; inspect volume and usefulness, then tune it.
 - `traces.headSamplingRate` is independent so traces do not need the same volume as logs.
 
 Sampling can hide individual events. Use full sampling during an incident or initial evaluation when volume permits, but do not promise that a sampled telemetry pipeline records every request.

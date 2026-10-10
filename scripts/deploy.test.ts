@@ -5,6 +5,7 @@ import { parse, type ParseError } from "jsonc-parser";
 import {
   aiGatewayPlan,
   buildCommands,
+  COMPATIBILITY_DATE,
   deploymentLogEntry,
   generateConfigs,
   validateConfig,
@@ -648,7 +649,7 @@ test("skips the Error Reporter build when error reporting is disabled", () => {
     c.errorReporting = { enabled: false, environment: "<ENVIRONMENT>", release: null };
   });
   const commands = buildCommands(config).map(({ args }) => args.join(" "));
-  assert.equal(commands.some((command) => command.includes("error-reporter")), false);
+  assert.equal(commands.some((command) => command.includes("thonbecker-personal-os-errors")), false);
 });
 
 test("records each deployed Worker and version, and the commits behind them", () => {
@@ -670,6 +671,68 @@ test("records each deployed Worker and version, and the commits behind them", ()
   assert.match(entry, /^## 2026-09-26 23:47 UTC$/m);
   // Appended whole, so the next entry starts on its own line.
   assert.ok(entry.endsWith("\n\n"));
+});
+
+test("deployment.jsonc owns workers_dev, invocation logs, traces, and the compatibility date", async () => {
+  const errors: ParseError[] = [];
+  const deployment = validateConfig(parse(
+    await readFile(new URL("../deployment.jsonc", import.meta.url), "utf8"),
+    errors,
+    { allowTrailingComma: true },
+  ) as DeploymentConfig);
+  assert.deepEqual(errors, []);
+  assert.equal(deployment.observability.logs.invocationLogs, true);
+  assert.equal(deployment.observability.traces.enabled, true);
+  assert.equal(deployment.observability.traces.headSamplingRate, 0.1);
+  assert.equal(deployment.workers.s3vExplorer.name, "thonbecker-s3v-explorer");
+
+  const bases = await baseConfigs();
+  const generated = generateConfigs(deployment, bases);
+  const owned = [
+    ["packages/public-chat", "publicChat", bases.publicChat, generated.publicChat],
+    ["packages/s3v-explorer", "s3vExplorer", bases.s3vExplorer, generated.s3vExplorer],
+    ["packages/custom-gatekeeper", "customGatekeeper", bases.customGatekeeper, generated.customGatekeeper],
+    ["packages/error-reporter", "errorReporter", bases.errorReporter, generated.errorReporter!],
+  ] as const;
+
+  for (const [dir, key, base, out] of owned) {
+    const deployedName = deployment.workers[key]!.name;
+    const pkg = JSON.parse(await readFile(new URL(`../${dir}/package.json`, import.meta.url), "utf8")) as { name: string };
+    assert.equal(pkg.name, deployedName, `${dir} package name`);
+    assert.equal(base.name, deployedName, `${dir} wrangler name`);
+    assert.equal(base.workers_dev, out.workers_dev, `${dir} workers_dev drifted from deployment.jsonc`);
+    assert.equal(base.observability?.logs?.invocation_logs, deployment.observability.logs.invocationLogs,
+      `${dir} invocation_logs drifted from deployment.jsonc`);
+    assert.equal(base.compatibility_date, COMPATIBILITY_DATE, dir);
+    assert.deepEqual(base.observability?.traces, {
+      enabled: true,
+      head_sampling_rate: 0.1,
+    }, dir);
+  }
+
+  for (const [name, worker] of Object.entries(generated)) {
+    assert.equal(worker.compatibility_date, COMPATIBILITY_DATE, name);
+    assert.equal(worker.observability?.logs?.invocation_logs, true, name);
+    assert.deepEqual(worker.observability?.traces, {
+      enabled: true,
+      head_sampling_rate: 0.1,
+    }, name);
+  }
+
+  assert.equal(
+    generated.workshop.services!.find((service) => service.binding === "S3V_EXPLORER")!.service,
+    "thonbecker-s3v-explorer",
+  );
+
+  const commands = buildCommands(deployment).map(({ args }) => args.join(" "));
+  for (const name of [
+    deployment.workers.publicChat.name,
+    deployment.workers.s3vExplorer.name,
+    deployment.workers.customGatekeeper.name,
+    deployment.workers.errorReporter!.name,
+  ]) {
+    assert.ok(commands.some((command) => command.includes(`-F ${name}`)), name);
+  }
 });
 
 test("records a partial deployment rather than dropping what did ship", () => {
