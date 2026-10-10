@@ -34,20 +34,22 @@ const generatedPaths = Object.fromEntries(
 ) as Record<keyof typeof packageDirs, string>;
 const defaultContextArtifactsNamespace = "gatekeeper-context-collections";
 
-// Newest date this checkout's wrangler/workerd actually applies (wrangler 4.139.0,
-// workerd 1.20260923.1). 2026-10-10 is past that runtime, so it would not turn on
-// durable_object_io_tasks_prevent_eviction (default 2026-10-01, absent from this workerd).
+// Newest date every Wrangler that deploys a Worker here will apply.
+// public-chat and s3v-explorer use wrangler 4.136.1; the submodule Workers use 4.138.0.
+// Both ship workerd 1.20260921.1, whose newest date is 2026-09-21. Root wrangler 4.139.0
+// knows 2026-09-23, but it does not deploy those Workers. 2026-10-10 is past all of them,
+// and durable_object_io_tasks_prevent_eviction (default 2026-10-01) is not in this workerd.
 // Stamped onto every generated Worker, including the four whose wrangler files live in the
 // pinned submodule, so those upstream files stay at their own date.
 //
-// Changes from the live dates (2026-08-04, 2026-08-08, 2026-09-04) through 2026-09-23:
+// Changes from the live dates (2026-08-04, 2026-08-08, 2026-09-04) through 2026-09-21:
 // - nodejs_compat and nodejs_compat_v2 already default as of 2026-08-04.
 // - workflows_enable_fast_engine_creation (2026-08-11) only affects Workflow bindings.
 //   None of these Workers declare one. The submodule Workers were already past this date.
 // - python_workers_314 (2026-09-08) applies only when the Worker is a Python Worker.
 // - spec_compliant_dispatch_exceptions (2026-09-15) reports event-listener exceptions
 //   instead of aborting dispatch. fetch and scheduled handlers still propagate.
-export const COMPATIBILITY_DATE = "2026-09-23";
+export const COMPATIBILITY_DATE = "2026-09-21";
 const accountIdPattern = /^[a-f\d]{32}$/i;
 
 const requiredPaths = [
