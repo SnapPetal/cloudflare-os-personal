@@ -17,6 +17,21 @@ Every deployment lands here eventually, from either path. A gap in this file mea
 yet written down, not that it did not happen — `gh run list --workflow=deploy.yml` is the other
 source of truth.
 
+## 2026-09-26 23:49 UTC — CI run 36280605434
+
+Root `d011db4`, submodule `270ca7c5`. Push-triggered; deployed after the local run below.
+
+| Worker | Version ID |
+| --- | --- |
+| `thonbecker-personal-os-errors` | `74dfd297-8851-440f-aa4a-3f1c260f932d` |
+| `thonbecker-public-chat` | `1fe95832-7dae-4af9-af4a-0efbee02f03e` |
+| `s3v-explorer` | `a004188b-9524-4820-8d82-58ab446cc369` |
+| `thonbecker-personal-os-context` | `753f62f7-6513-4f48-b21e-b7b21abe10ec` |
+| `thonbecker-personal-os-scheduler` | `302a9cc4-227f-4c64-8f81-56639516efe0` |
+| `thonbecker-personal-os-gatekeeper` | `36a0d25d-ebc1-494c-a472-3b37e16456d5` |
+| `thonbecker-personal-os` | `f96a26e7-f063-4720-9032-6d7bf05e34aa` |
+| `thonbecker-personal-os-router` | `caf09cdf-63c5-4618-8011-18ba5466b534` |
+
 ## 2026-09-26 23:35 UTC — local
 
 Root `25dd0ed`, submodule `270ca7c5`.

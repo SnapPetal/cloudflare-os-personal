@@ -33,6 +33,21 @@ const generatedPaths = Object.fromEntries(
   Object.entries(packageDirs).map(([name, dir]) => [name, join(root, dir, generatedName)]),
 ) as Record<keyof typeof packageDirs, string>;
 const defaultContextArtifactsNamespace = "gatekeeper-context-collections";
+
+// Newest date this checkout's wrangler/workerd actually applies (wrangler 4.139.0,
+// workerd 1.20260923.1). 2026-10-10 is past that runtime, so it would not turn on
+// durable_object_io_tasks_prevent_eviction (default 2026-10-01, absent from this workerd).
+// Stamped onto every generated Worker, including the four whose wrangler files live in the
+// pinned submodule, so those upstream files stay at their own date.
+//
+// Changes from the live dates (2026-08-04, 2026-08-08, 2026-09-04) through 2026-09-23:
+// - nodejs_compat and nodejs_compat_v2 already default as of 2026-08-04.
+// - workflows_enable_fast_engine_creation (2026-08-11) only affects Workflow bindings.
+//   None of these Workers declare one. The submodule Workers were already past this date.
+// - python_workers_314 (2026-09-08) applies only when the Worker is a Python Worker.
+// - spec_compliant_dispatch_exceptions (2026-09-15) reports event-listener exceptions
+//   instead of aborting dispatch. fetch and scheduled handlers still propagate.
+export const COMPATIBILITY_DATE = "2026-09-23";
 const accountIdPattern = /^[a-f\d]{32}$/i;
 
 const requiredPaths = [
@@ -441,6 +456,7 @@ function setCommon(
 ): void {
   config.account_id = deployment.accountId;
   config.name = name;
+  config.compatibility_date = COMPATIBILITY_DATE;
   config.workers_dev = route.workersDev;
   delete config.routes;
   if (route.customDomain) Object.assign(config, routeConfig(route));
@@ -481,7 +497,7 @@ export function generateConfigs(config: DeploymentConfig, bases: BaseConfigs): G
   setCommon(router, config, config.workers.router.name, config.workers.router.route);
   // Keep the private vector admin path on the Worker path even if an upstream router rebase
   // replaces its asset-routing defaults. Without this, ASSETS serves the SPA and skips the
-  // router -> Workshop -> s3v-explorer service-binding chain entirely.
+  // router -> Workshop -> thonbecker-s3v-explorer service-binding chain entirely.
   router.assets = {
     ...router.assets,
     run_worker_first: [...new Set([
@@ -676,10 +692,12 @@ export function buildCommands(config: DeploymentConfig): BuildCommand[] {
     // The Scheduler's `build` nests the same cached `vp run build:app`, so it needs the same pair.
     { args: submoduleBuild("@gadgets/gatekeeper-scheduler", "build:app") },
     { args: submoduleBuild("@gadgets/gatekeeper-scheduler") },
-    { args: ownBuild("public-chat", "types:check") },
-    { args: ownBuild("s3v-explorer", "types:check") },
-    { args: ownBuild("custom-gatekeeper") },
-    ...(config.errorReporting.enabled ? [{ args: ownBuild("error-reporter") }] : []),
+    { args: ownBuild("thonbecker-public-chat", "types:check") },
+    { args: ownBuild("thonbecker-s3v-explorer", "types:check") },
+    { args: ownBuild("thonbecker-personal-os-gatekeeper") },
+    ...(config.errorReporting.enabled
+      ? [{ args: ownBuild("thonbecker-personal-os-errors") }]
+      : []),
     // Access mode is a build-time constant in the frontend bundle (`src/useAuth.ts`), so it is set
     // here rather than inherited: a bundle built under a different value is wrong, not just stale.
     { args: submoduleBuild("@gadgets/workshop-frontend"), env: { VITE_CF_ACCESS_MODE: "true" } },
