@@ -34,6 +34,16 @@ const submoduleDir = join(root, "cloudflare-os");
 const mirroredSections = ["catalog", "overrides"] as const;
 type MirroredSection = (typeof mirroredSections)[number];
 
+/**
+ * Override keys this repository adds and the submodule does not.
+ *
+ * `sharp` is the security pin for miniflare 5.20261001.0-alpha, which depends on 0.35.4 exactly.
+ * The fixed release is 0.35.5, and Dependabot security updates cannot move that pin. It is not a
+ * catalog entry and not part of the capnweb dedupe contract, so its absence upstream is not drift.
+ * A value the submodule *does* declare still has to match.
+ */
+const parentOnlyOverrideKeys = new Set(["sharp"]);
+
 /** One mirrored key whose two copies disagree. `null` on a side means the key is absent there. */
 export interface CatalogDrift {
   section: MirroredSection;
@@ -132,6 +142,7 @@ export function catalogDrift(starterText: string, submoduleText: string): Catalo
     for (const key of [...new Set([...mine.keys(), ...theirs.keys()])].toSorted()) {
       const left = mine.get(key) ?? null;
       const right = theirs.get(key) ?? null;
+      if (section === "overrides" && parentOnlyOverrideKeys.has(key) && right === null) continue;
       if (left !== right) drift.push({ section, key, starter: left, submodule: right });
     }
   }

@@ -104,6 +104,15 @@ test("an override this file carries and the submodule dropped is drift too", () 
   ]);
 });
 
+test("the parent-only sharp security pin is not drift, and a disagreeing submodule value is", () => {
+  const pinned = starter.replace("  '@types/node': 26.1.0", "  '@types/node': 26.1.0\n  sharp: 0.35.5");
+  assert.deepEqual(catalogDrift(pinned, submodule), []);
+  const both = submodule.replace("  '@types/node': 26.1.0", "  '@types/node': 26.1.0\n  sharp: 0.35.4");
+  assert.deepEqual(catalogDrift(pinned, both), [
+    { section: "overrides", key: "sharp", starter: "0.35.5", submodule: "0.35.4" },
+  ]);
+});
+
 test("the real workspace files are in sync", async () => {
   // The regression this whole script exists for: a submodule bump that adds a catalog entry
   // without the matching edit here installs a second capnweb and breaks every RPC call at runtime,
