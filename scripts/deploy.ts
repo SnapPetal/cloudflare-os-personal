@@ -24,6 +24,7 @@ const packageDirs = {
   workshop: "cloudflare-os/packages/workshop-backend",
   publicChat: "packages/public-chat",
   s3vExplorer: "packages/s3v-explorer",
+  familyQuest: "packages/family-quest",
   context: "cloudflare-os/packages/gatekeeper-context",
   scheduler: "cloudflare-os/packages/gatekeeper-scheduler",
   customGatekeeper: "packages/custom-gatekeeper",
@@ -62,6 +63,7 @@ const requiredPaths = [
   "workers.workshop.name",
   "workers.publicChat.name",
   "workers.s3vExplorer.name",
+  "workers.familyQuest.name",
   "workers.context.name",
   "workers.scheduler.name",
   "workers.customGatekeeper.name",
@@ -286,6 +288,12 @@ export function validateConfig(config: DeploymentConfig): DeploymentConfig {
       config.workers.s3vExplorer.route.customDomain !== undefined) {
     throw new Error("S3 Vector Explorer must use workersDev: false without a public domain.");
   }
+  if (config.workers.familyQuest.route.workersDev !== false ||
+      config.workers.familyQuest.route.customDomain !== undefined) {
+    throw new Error(
+      "Family Quest must use workersDev: false without a public domain. " +
+      "A custom domain would attach a live hostname on the next deploy.");
+  }
   for (const [label, value] of [
     ["s3vExplorer.region", config.s3vExplorer.region],
     ["s3vExplorer.vectorBucketName", config.s3vExplorer.vectorBucketName],
@@ -492,6 +500,7 @@ export function generateConfigs(config: DeploymentConfig, bases: BaseConfigs): G
   const workshop = structuredClone(bases.workshop);
   const publicChat = structuredClone(bases.publicChat);
   const s3vExplorer = structuredClone(bases.s3vExplorer);
+  const familyQuest = structuredClone(bases.familyQuest);
   const context = structuredClone(bases.context);
   const scheduler = structuredClone(bases.scheduler);
   const customGatekeeper = structuredClone(bases.customGatekeeper);
@@ -650,8 +659,18 @@ export function generateConfigs(config: DeploymentConfig, bases: BaseConfigs): G
     VECTOR_BUCKET_NAME: config.s3vExplorer.vectorBucketName,
   };
 
+  setCommon(familyQuest, config, config.workers.familyQuest.name, config.workers.familyQuest.route);
+  familyQuest.ai = { binding: "AI" };
+  familyQuest.vars = {
+    AI_DAILY_CAP: "40",
+    AI_MODEL: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    AI_MODEL_FALLBACK: "@cf/meta/llama-3.1-8b-instruct-fast",
+    TTS_MODEL: "@cf/myshell-ai/melotts",
+    EMBED_MODEL: "@cf/baai/bge-small-en-v1.5",
+  };
+
   return {
-    router, workshop, publicChat, s3vExplorer, context, scheduler, customGatekeeper,
+    router, workshop, publicChat, s3vExplorer, familyQuest, context, scheduler, customGatekeeper,
     ...(errorReporter && { errorReporter }),
   };
 }
@@ -700,6 +719,7 @@ export function buildCommands(config: DeploymentConfig): BuildCommand[] {
     { args: submoduleBuild("@gadgets/gatekeeper-scheduler") },
     { args: ownBuild("thonbecker-public-chat", "types:check") },
     { args: ownBuild("thonbecker-s3v-explorer", "types:check") },
+    { args: ownBuild("thonbecker-family-quest", "types:check") },
     { args: ownBuild("thonbecker-personal-os-gatekeeper") },
     ...(config.errorReporting.enabled
       ? [{ args: ownBuild("thonbecker-personal-os-errors") }]
@@ -927,6 +947,7 @@ async function main(): Promise<void> {
     workshop: await readJsonc(join(root, packageDirs.workshop, "wrangler.jsonc")),
     publicChat: await readJsonc(join(root, packageDirs.publicChat, "wrangler.jsonc")),
     s3vExplorer: await readJsonc(join(root, packageDirs.s3vExplorer, "wrangler.jsonc")),
+    familyQuest: await readJsonc(join(root, packageDirs.familyQuest, "wrangler.jsonc")),
     context: await readJsonc(join(root, packageDirs.context, "wrangler.jsonc")),
     scheduler: await readJsonc(join(root, packageDirs.scheduler, "wrangler.jsonc")),
     customGatekeeper: await readJsonc(join(root, packageDirs.customGatekeeper, "wrangler.jsonc")),
@@ -958,8 +979,11 @@ async function main(): Promise<void> {
     deployOne(packageDirs.scheduler);
     deployOne(packageDirs.customGatekeeper);
     deployOne(packageDirs.workshop);
-    // Last: it binds every one of the above.
+    // Last of the OS: it binds every one of the above.
     deployOne(packageDirs.router);
+    // After the router. Family Quest is not on the OS request path and has no public route.
+    // A failure here leaves the OS Workers already updated, instead of blocking them.
+    deployOne(packageDirs.familyQuest);
     // A dry run reports no versions, and an entry with holes in it is worse than none.
     if (!check && deployed.length > 0) await appendDeploymentLog(deployed);
   } finally {
