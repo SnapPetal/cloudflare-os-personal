@@ -732,6 +732,9 @@ test("deployment.jsonc owns workers_dev, invocation logs, traces, and the compat
     { pattern: "quest.thonbecker.biz", custom_domain: true },
   ]);
   assert.equal(generated.familyQuest.vars?.AI_MODEL, "@cf/meta/llama-3.3-70b-instruct-fp8-fast");
+  assert.equal(generated.familyQuest.vars?.ACCESS_AUD, undefined);
+  assert.equal(generated.familyQuest.vars?.ACCESS_TEAM_DOMAIN, undefined);
+  assert.equal(generated.workshop.vars?.CF_ACCESS_AUD, deployment.access.audience);
   assert.equal(deployment.workers.familyQuest.name, "thonbecker-family-quest");
 
   const commands = buildCommands(deployment).map(({ args }) => args.join(" "));
@@ -762,11 +765,11 @@ test("Deploy workflow applies Family Quest migrations before that Worker deploys
   const only = workflow.indexOf("pnpm deploy -- --only-family-quest");
   assert.ok(skip !== -1 && prepare !== -1 && only !== -1);
   assert.ok(skip < prepare && prepare < only);
-  assert.match(workflow, /FAMILY_QUEST_PASSCODE: \$\{\{ secrets\.FAMILY_QUEST_PASSCODE \}\}/);
-  assert.match(workflow, /FAMILY_QUEST_SESSION_SECRET: \$\{\{ secrets\.FAMILY_QUEST_SESSION_SECRET \}\}/);
+  assert.equal(workflow.includes("FAMILY_QUEST_PASSCODE"), false);
+  assert.equal(workflow.includes("FAMILY_QUEST_SESSION_SECRET"), false);
+  assert.equal(workflow.includes("secret put"), false);
   assert.match(script, /wrangler d1 migrations apply thonbecker-family-quest --remote/);
-  assert.match(script, /wrangler secret put "\$worker_secret" --name thonbecker-family-quest/);
-  assert.match(script, /Skipping wrangler secret put/);
+  assert.equal(script.includes("secret put"), false);
 });
 
 test("records a partial deployment rather than dropping what did ship", () => {

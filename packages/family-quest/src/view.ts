@@ -1,3 +1,4 @@
+import type { Viewer } from "./auth";
 import { ANCESTRIES, CLASSES, PREMISES, levelUpReady } from "./classes";
 import type { CapResult } from "./cost";
 import { capMessage } from "./cost";
@@ -10,18 +11,22 @@ import { escapeHtml } from "./text";
 export function layout(input: {
   title: string;
   body: string;
-  csrf?: string | null;
+  viewer?: Viewer | null;
   questId?: string | null;
 }): string {
-  const csrf = input.csrf ? `<meta name="fq-csrf" content="${escapeHtml(input.csrf)}">` : "";
   const quest = input.questId ? ` data-quest="${escapeHtml(input.questId)}"` : "";
+  const lock = input.viewer?.logoutUrl
+    ? `<a href="${escapeHtml(input.viewer.logoutUrl)}">Lock</a>`
+    : "";
+  const signedIn = input.viewer
+    ? `<a href="/bestiary">Bestiary</a><a href="/library">Library</a><span class="small text-secondary">${escapeHtml(input.viewer.email || "Signed in")}</span>${lock}`
+    : "";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  ${csrf}
   <title>${escapeHtml(input.title)} · Family Quest</title>
   <script src="/js/theme.js"></script>
   <link rel="stylesheet" href="/vendor/bootstrap.min.css">
@@ -32,7 +37,7 @@ export function layout(input: {
     <div class="container py-3 d-flex justify-content-between align-items-center gap-3">
       <a class="text-decoration-none" href="/"><span class="fq-mark">Family Quest</span></a>
       <nav class="d-flex gap-3 align-items-center">
-        ${input.csrf ? `<a href="/bestiary">Bestiary</a><a href="/library">Library</a><form method="post" action="/logout">${csrfInput(input.csrf)}<button class="btn btn-sm btn-outline-secondary" type="submit">Lock</button></form>` : ""}
+        ${signedIn}
       </nav>
     </div>
   </header>
@@ -45,36 +50,17 @@ export function layout(input: {
 </html>`;
 }
 
-export function setupPage(): string {
+export function signedOutPage(): string {
   return layout({
-    title: "Setup",
+    title: "Sign in",
     body: `<section class="fq-card card p-4">
-      <h1 class="h3">Family Quest is not set up yet</h1>
-      <p>The table is waiting on its family passcode. Set the <code>FAMILY_PASSCODE</code> and <code>SESSION_SECRET</code> Worker secrets, then open this page again. Nothing here calls a paid API.</p>
+      <h1 class="h3">Sign in through Cloudflare Access</h1>
+      <p>Family Quest uses the same Cloudflare Access application as os.thonbecker.biz. Open <code>quest.thonbecker.biz</code> and sign in there. This page is what you see when Access has not signed the visit.</p>
     </section>`,
   });
 }
 
-export function loginPage(error: string | null): string {
-  return layout({
-    title: "Welcome",
-    body: `<section class="row justify-content-center">
-      <div class="col-lg-7">
-        <p class="fq-mark mb-2">A table for the Becker family</p>
-        <h1 class="display-6">Family Quest</h1>
-        <p class="lead">An AI dungeon master for a shared, kid-friendly adventure. Type what you do, roll the dice, and keep the story for next time.</p>
-        ${error ? `<div class="alert alert-warning">${escapeHtml(error)}</div>` : ""}
-        <form method="post" action="/login" class="fq-card card p-4">
-          <label class="form-label" for="passcode">Family passcode</label>
-          <input class="form-control" id="passcode" name="passcode" type="password" autocomplete="current-password" required>
-          <button class="btn btn-success mt-3" type="submit">Come in</button>
-        </form>
-      </div>
-    </section>`,
-  });
-}
-
-export function homePage(campaigns: CampaignRecord[], csrf: string): string {
+export function homePage(campaigns: CampaignRecord[], viewer: Viewer): string {
   const cards =
     campaigns.length === 0
       ? `<p>No quests yet. Start one and the Dungeon Master will set the scene.</p>`
@@ -94,7 +80,7 @@ export function homePage(campaigns: CampaignRecord[], csrf: string): string {
           .join("");
   return layout({
     title: "Quests",
-    csrf,
+    viewer,
     body: `<div class="d-flex justify-content-between align-items-end gap-3 mb-4 flex-wrap">
       <div>
         <p class="fq-mark mb-1">Saved quests</p>
@@ -107,7 +93,7 @@ export function homePage(campaigns: CampaignRecord[], csrf: string): string {
   });
 }
 
-export function newQuestPage(csrf: string, error: string | null): string {
+export function newQuestPage(viewer: Viewer, error: string | null): string {
   const premises = PREMISES.map(
     (premise, index) => `<label class="list-group-item">
       <input class="form-check-input me-2" type="radio" name="premise" value="${premise.id}" ${index === 0 ? "checked" : ""}>
@@ -129,12 +115,11 @@ export function newQuestPage(csrf: string, error: string | null): string {
   const blurbs = CLASSES.map((entry) => `<li><strong>${escapeHtml(entry.name)}.</strong> ${escapeHtml(entry.blurb)}</li>`).join("");
   return layout({
     title: "New quest",
-    csrf,
+    viewer,
     body: `<p class="fq-mark mb-1">New quest</p>
     <h1 class="h2">Who is at the table?</h1>
     ${error ? `<div class="alert alert-warning">${escapeHtml(error)}</div>` : ""}
     <form method="post" action="/quests" class="fq-card card p-4">
-      ${csrfInput(csrf)}
       <fieldset class="mb-4">
         <legend class="h5">Party</legend>
         <label class="form-check"><input class="form-check-input" type="radio" name="mode" value="quick" checked> Quick start from names</label>
@@ -167,7 +152,7 @@ export function playPage(input: {
   messages: MessageRecord[];
   encounter: { id: string; state: EncounterState } | null;
   suggested: MonsterStat[];
-  csrf: string;
+  viewer: Viewer;
   cap: CapResult;
   error: string | null;
   speakText: string | null;
@@ -177,7 +162,7 @@ export function playPage(input: {
   if (input.fragment) return root;
   return layout({
     title: input.campaign.title,
-    csrf: input.csrf,
+    viewer: input.viewer,
     questId: input.campaign.id,
     body: root,
   });
@@ -189,7 +174,6 @@ function questRoot(input: {
   messages: MessageRecord[];
   encounter: { id: string; state: EncounterState } | null;
   suggested: MonsterStat[];
-  csrf: string;
   cap: CapResult;
   error: string | null;
   speakText: string | null;
@@ -231,7 +215,6 @@ function questRoot(input: {
           <p class="mt-3 mb-0">${escapeHtml(input.campaign.summary || "The running summary appears after the first replies.")}</p>
         </details>
         <form method="post" action="/quests/${escapeHtml(input.campaign.id)}/delete">
-          ${csrfInput(input.csrf)}
           <label class="form-check small"><input class="form-check-input" type="checkbox" name="confirm" value="yes"> Delete this saved quest</label>
           <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
         </form>
@@ -264,12 +247,11 @@ function storyLog(messages: MessageRecord[]): string {
   </section>`;
 }
 
-function composer(input: { campaign: CampaignRecord; characters: CharacterRecord[]; csrf: string; cap: CapResult }): string {
+function composer(input: { campaign: CampaignRecord; characters: CharacterRecord[]; cap: CapResult }): string {
   const options = input.characters
     .map((character) => `<option value="${escapeHtml(character.name)}">${escapeHtml(character.name)}</option>`)
     .join("");
   return `<form class="fq-card card p-3" method="post" action="/quests/${escapeHtml(input.campaign.id)}/act" hx-post="/quests/${escapeHtml(input.campaign.id)}/act" hx-target="#quest-page" hx-swap="outerHTML" hx-disabled-elt="find button">
-    ${csrfInput(input.csrf)}
     <label class="form-label" for="speaker">Who acts</label>
     <select class="form-select mb-2" id="speaker" name="speaker">${options}</select>
     <label class="form-label" for="action">What do you do?</label>
@@ -282,13 +264,12 @@ function composer(input: { campaign: CampaignRecord; characters: CharacterRecord
   </form>`;
 }
 
-function dicePanel(input: { campaign: CampaignRecord; characters: CharacterRecord[]; csrf: string }): string {
+function dicePanel(input: { campaign: CampaignRecord; characters: CharacterRecord[] }): string {
   const dice = [20, 12, 10, 8, 6, 4].map((sides) => `<option value="${sides}">d${sides}</option>`).join("");
   const speakers = input.characters
     .map((character) => `<option value="${escapeHtml(character.name)}">${escapeHtml(character.name)}</option>`)
     .join("");
   return `<form class="fq-card card p-3 mb-3" method="post" action="/quests/${escapeHtml(input.campaign.id)}/dice" hx-post="/quests/${escapeHtml(input.campaign.id)}/dice" hx-target="#quest-page" hx-swap="outerHTML">
-    ${csrfInput(input.csrf)}
     <h2 class="h5">Dice</h2>
     <div class="row g-2">
       <div class="col-4"><input class="form-control" name="count" type="number" min="1" max="20" value="1"></div>
@@ -305,11 +286,11 @@ function dicePanel(input: { campaign: CampaignRecord; characters: CharacterRecor
   </form>`;
 }
 
-function partyPanel(input: { campaign: CampaignRecord; characters: CharacterRecord[]; csrf: string }): string {
+function partyPanel(input: { campaign: CampaignRecord; characters: CharacterRecord[] }): string {
   const sheets = input.characters
     .map((character) => {
       const ready = levelUpReady(character.level, character.xp)
-        ? `<form method="post" action="/quests/${escapeHtml(input.campaign.id)}/characters/${escapeHtml(character.id)}/level" class="mt-2">${csrfInput(input.csrf)}<button class="btn btn-sm btn-success" type="submit">Level up</button></form>`
+        ? `<form method="post" action="/quests/${escapeHtml(input.campaign.id)}/characters/${escapeHtml(character.id)}/level" class="mt-2"><button class="btn btn-sm btn-success" type="submit">Level up</button></form>`
         : "";
       return `<details class="mb-3">
         <summary><strong>${escapeHtml(character.name)}</strong> · ${escapeHtml(character.class_name)}</summary>
@@ -326,7 +307,6 @@ function partyPanel(input: { campaign: CampaignRecord; characters: CharacterReco
           ${score("CHA", character.charisma)}
         </div>
         <form method="post" action="/quests/${escapeHtml(input.campaign.id)}/characters/${escapeHtml(character.id)}">
-          ${csrfInput(input.csrf)}
           <label class="form-label small">HP <input class="form-control" name="hp" type="number" min="0" max="${character.max_hp}" value="${character.hp}"></label>
           <label class="form-label small">Inventory <textarea class="form-control" name="inventory" rows="2" maxlength="400">${escapeHtml(character.inventory)}</textarea></label>
           <label class="form-label small">Portrait <textarea class="form-control" name="portrait" rows="2" maxlength="300">${escapeHtml(character.portrait)}</textarea></label>
@@ -344,7 +324,6 @@ function encounterPanel(input: {
   characters: CharacterRecord[];
   encounter: { id: string; state: EncounterState } | null;
   suggested: MonsterStat[];
-  csrf: string;
 }): string {
   const state = input.encounter?.state;
   if (!input.encounter || !state || state.dismissed) {
@@ -356,7 +335,6 @@ function encounterPanel(input: {
       .join("");
     const picker = options
       ? `<form class="mb-3" method="post" action="/quests/${escapeHtml(input.campaign.id)}/encounter" hx-post="/quests/${escapeHtml(input.campaign.id)}/encounter" hx-target="#quest-page" hx-swap="outerHTML">
-      ${csrfInput(input.csrf)}
       <label class="form-label small" for="monster_id">Or face a known critter</label>
       <div class="row g-2">
         <div class="col-8"><select class="form-select" id="monster_id" name="monster_id">${options}</select></div>
@@ -366,7 +344,6 @@ function encounterPanel(input: {
     </form>`
       : "";
     return `<form class="mb-3" method="post" action="/quests/${escapeHtml(input.campaign.id)}/encounter" hx-post="/quests/${escapeHtml(input.campaign.id)}/encounter" hx-target="#quest-page" hx-swap="outerHTML">
-      ${csrfInput(input.csrf)}
       <button class="btn btn-outline-success" type="submit">Ask the Dungeon Master for a gentle challenge</button>
     </form>
     ${picker}`;
@@ -402,7 +379,7 @@ function encounterPanel(input: {
     ${current && current.side === "party" ? playerTurnForm(input, current) : ""}
     ${current && current.side === "enemy" ? enemyTurnForm(input) : ""}
     <ul class="small mt-3 mb-2">${log}</ul>
-    <form method="post" action="/quests/${escapeHtml(input.campaign.id)}/encounter/dismiss">${csrfInput(input.csrf)}<button class="btn btn-sm btn-link px-0" type="submit">Tuck this scene away</button></form>
+    <form method="post" action="/quests/${escapeHtml(input.campaign.id)}/encounter/dismiss"><button class="btn btn-sm btn-link px-0" type="submit">Tuck this scene away</button></form>
   </section>`;
 }
 
@@ -410,7 +387,6 @@ function playerTurnForm(
   input: {
     campaign: CampaignRecord;
     characters: CharacterRecord[];
-    csrf: string;
     encounter: { state: EncounterState } | null;
   },
   current: Combatant,
@@ -422,7 +398,6 @@ function playerTurnForm(
     .join("");
   const heal = current.heal ? `<option value="heal">Heal</option>` : "";
   return `<form method="post" action="/quests/${escapeHtml(input.campaign.id)}/encounter/act" hx-post="/quests/${escapeHtml(input.campaign.id)}/encounter/act" hx-target="#quest-page" hx-swap="outerHTML" x-data="{ action: 'attack' }">
-    ${csrfInput(input.csrf)}
     <input type="hidden" name="actor" value="${escapeHtml(current.id)}">
     <label class="form-label small">Action</label>
     <select class="form-select mb-2" name="action" x-model="action">
@@ -444,9 +419,8 @@ function playerTurnForm(
   </form>`;
 }
 
-function enemyTurnForm(input: { campaign: CampaignRecord; csrf: string }): string {
+function enemyTurnForm(input: { campaign: CampaignRecord }): string {
   return `<form method="post" action="/quests/${escapeHtml(input.campaign.id)}/encounter/act" hx-post="/quests/${escapeHtml(input.campaign.id)}/encounter/act" hx-target="#quest-page" hx-swap="outerHTML">
-    ${csrfInput(input.csrf)}
     <input type="hidden" name="action" value="enemy">
     <button class="btn btn-outline-success" type="submit">See what they do</button>
   </form>`;
@@ -470,10 +444,6 @@ function hpBar(hp: number, max: number): string {
   const pct = Math.max(0, Math.min(100, Math.round((Math.max(0, hp) / safeMax) * 100)));
   const tone = pct > 60 ? "success" : pct > 30 ? "warning" : "danger";
   return `<div class="progress" role="progressbar" aria-valuenow="${Math.max(0, hp)}" aria-valuemin="0" aria-valuemax="${safeMax}" aria-label="Hit points"><div class="progress-bar bg-${tone}" style="width: ${pct}%"></div></div>`;
-}
-
-export function csrfInput(csrf: string): string {
-  return `<input type="hidden" name="csrf" value="${escapeHtml(csrf)}">`;
 }
 
 function friendlyTime(iso: string): string {

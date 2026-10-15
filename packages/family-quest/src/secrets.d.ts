@@ -10,10 +10,13 @@ interface Env {
   TTS_MODEL: string;
   EMBED_MODEL: string;
   /**
-   * Shared family passcode. Absent until the Deploy workflow sets it, and then it is
-   * `undefined` rather than an empty string. `secretsReady` treats that as not set up.
+   * Optional. Team origin such as `https://<team>.cloudflareaccess.com`.
+   * JWT verification runs only when this and `ACCESS_AUD` are both set.
    */
-  FAMILY_PASSCODE?: string;
-  /** HMAC key for the session cookie. Absent, not `""`, until the Deploy workflow sets it. */
-  SESSION_SECRET?: string;
+  ACCESS_TEAM_DOMAIN?: string;
+  /**
+   * Optional AUD tag for the Access application. Not required: quest.thonbecker.biz
+   * is added to the existing os.thonbecker.biz application.
+   */
+  ACCESS_AUD?: string;
 }

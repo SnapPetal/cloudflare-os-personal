@@ -8,7 +8,7 @@ Nothing in this app calls a paid third-party API or asks for a new API key. Work
 
 This Worker lives in `packages/family-quest` of `SnapPetal/cloudflare-os-personal`. Its name is `thonbecker-family-quest`. A separate `SnapPetal/family-quest` repository was not created.
 
-`deployment.jsonc` sets `workers.familyQuest.route` to `{ "customDomain": "quest.thonbecker.biz" }`. Merging uploads the Worker, attaches that hostname, and lets Wrangler provision its D1 database and R2 notes bucket. Set `FAMILY_PASSCODE` and `SESSION_SECRET` before anyone should open the table. Vectorize is not in the Wrangler config: Wrangler does not create indexes, and a missing index would fail the deploy of this repository. Rules and notes are still searchable as text. Add the `vectorize` binding after `npx wrangler vectorize create thonbecker-family-quest-lore --dimensions=384 --metric=cosine`.
+`deployment.jsonc` sets `workers.familyQuest.route` to `{ "customDomain": "quest.thonbecker.biz" }`. Merging uploads the Worker, attaches that hostname, and lets Wrangler provision its D1 database and R2 notes bucket. Sign-in is Cloudflare Access on that hostname. There is no passcode and no Worker secret. Vectorize is not in the Wrangler config: Wrangler does not create indexes, and a missing index would fail the deploy of this repository. Rules and notes are still searchable as text. Add the `vectorize` binding after `npx wrangler vectorize create thonbecker-family-quest-lore --dimensions=384 --metric=cosine`.
 
 ## What you can do
 
@@ -19,7 +19,7 @@ This Worker lives in `packages/family-quest` of `SnapPetal/cloudflare-os-persona
 - Ask for a gentle challenge. Combat has initiative, enemies, turns, attack and damage rolls, conditions, and an ending with victory, loot, and XP. The encounter panel shows turn order and HP bars.
 - Roll d4–d20 with a modifier, advantage, or disadvantage. Combat dice use the same roller.
 - The server rolls every die with `crypto.getRandomValues` and rejection sampling. The model chooses critter actions and story. The server applies the numbers.
-- A shared family passcode (Worker secret) sets a signed session cookie.
+- Cloudflare Access signs the family in. The Worker checks `Cf-Access-Jwt-Assertion` and shows the verified email. The Lock link signs out of Access.
 - A daily cap on Workers AI calls is stored in D1. Dice, sheets, and saved chapters keep working after the cap, with a plain explanation.
 
 Classes: Brave Knight, Forest Ranger, Kind Healer, Spark Wizard, Sneaky Scout, Story Bard, Animal Friend, Gadget Inventor.
@@ -72,22 +72,11 @@ From the repository root, after `pnpm install`:
 
 ```bash
 cd packages/family-quest
-cp .dev.vars.example .dev.vars
-```
-
-Edit `.dev.vars`:
-
-- `FAMILY_PASSCODE` — at least 4 characters. This is the shared family passcode.
-- `SESSION_SECRET` — at least 16 characters. Use a long random string (`openssl rand -base64 32`).
-
-Create a local D1 database and apply the migrations. This does not create a remote database:
-
-```bash
 pnpm exec wrangler d1 migrations apply thonbecker-family-quest --local
 pnpm exec wrangler dev
 ```
 
-Open the URL Wrangler prints (usually `http://localhost:8787`). The session cookie is `Secure` only on HTTPS, so local HTTP still keeps you signed in.
+This does not create a remote database. `wrangler dev` does not inject Access headers, so the local site shows the sign-in page. Production sign-in happens at the edge, on `quest.thonbecker.biz`, after that hostname is on the existing Access application.
 
 ## Deploy
 
@@ -97,21 +86,20 @@ On a push to `main`:
 
 - The other Workers deploy first. Family Quest is not on their request path.
 - `wrangler d1 migrations apply thonbecker-family-quest --remote` applies `migrations/`, including the SRD seed, before this Worker is uploaded.
-- The workflow sets `FAMILY_PASSCODE` and `SESSION_SECRET` from the GitHub Actions secrets `FAMILY_QUEST_PASSCODE` and `FAMILY_QUEST_SESSION_SECRET`. An empty GitHub secret is skipped with a warning. The table then shows a "not set up yet" page instead of an error.
+- No GitHub Actions secrets are required for Family Quest. The existing `CLOUDFLARE_API_TOKEN` is still what deploys the Worker.
 - The Worker script is uploaded as `thonbecker-family-quest` on `quest.thonbecker.biz`.
 - Wrangler provisions the D1 database `thonbecker-family-quest` and the R2 binding `NOTES` if they do not exist yet. Migrations do not create the database; the first deploy does.
 - Vectorize is not created. Semantic search stays on the D1 text fallback.
 
-To set the secrets by hand:
+### quest.thonbecker.biz and Cloudflare Access
 
-```bash
-printf '%s' 'your-family-passcode' | pnpm exec wrangler secret put FAMILY_PASSCODE --name thonbecker-family-quest
-printf '%s' "$(openssl rand -base64 32)" | pnpm exec wrangler secret put SESSION_SECRET --name thonbecker-family-quest
-```
+Add `quest.thonbecker.biz` to the existing self-hosted Access application for `os.thonbecker.biz`. This repo does not create Access apps, and Family Quest does not need the team domain or the AUD tag.
 
-### quest.thonbecker.biz
+The Worker treats a visit as signed in when both `Cf-Access-Jwt-Assertion` and `Cf-Access-Authenticated-User-Email` are present. The nav shows that email. A visit without those headers gets a "Sign in through Cloudflare Access" page (HTTP 401), not an error.
 
-The production hostname is set in `deployment.jsonc`. Wrangler creates the DNS and TLS custom domain on deploy when the `thonbecker.biz` zone is in the same Cloudflare account. Until both Worker secrets are set, the site shows the setup page.
+JWT verification is optional. Set both plain vars `ACCESS_TEAM_DOMAIN` (the team origin, `https://<team>.cloudflareaccess.com`) and `ACCESS_AUD` (the application's AUD tag) and the Worker checks the JWT against `<team>/cdn-cgi/access/certs`. Leave them unset if you do not have those values. A failed check shows the sign-in page. Neither var is a secret, and the Deploy workflow does not set them.
+
+Wrangler creates the DNS and TLS custom domain on deploy when the `thonbecker.biz` zone is in the same Cloudflare account. The Access hostname stays a dashboard edit on the existing application.
 
 ## Tests
 
@@ -129,7 +117,7 @@ Vitest covers the dice roller (including unbiased sampling, advantage, and disad
 - `src/cost.ts` — daily cap
 - `src/dm.ts` — PG system prompt and JSON parsing
 - `src/ai.ts` — Workers AI text and MeloTTS audio
-- `src/auth.ts` — passcode check and HMAC session cookie
+- `src/auth.ts` — Cloudflare Access headers, optional JWT check, same-origin form posts
 - `migrations/0001_init.sql` — quests, heroes, messages
 - `migrations/0002_srd.sql` through `migrations/0010_srd.sql` — SRD bestiary and rules library
 - `public/` — vendored Bootstrap, Alpine, htmx, Noto Sans, and app CSS/JS

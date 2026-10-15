@@ -1012,8 +1012,8 @@ async function main(): Promise<void> {
     }
     if (mode !== "skip-family-quest") {
       // After the other Workers. Family Quest is not on the OS request path, so a failure
-      // here leaves those Workers already updated. Migrations and secrets run first on a
-      // full `pnpm deploy`. The Deploy workflow runs that script as its own step, between
+      // here leaves those Workers already updated. D1 migrations run first on a full
+      // `pnpm deploy`. The Deploy workflow runs that script as its own step, between
       // `--skip-family-quest` and `--only-family-quest`, so this branch does not repeat it.
       if (!check && mode === "with-family-quest") runFamilyQuestPredeploy(config.accountId);
       deployOne(packageDirs.familyQuest);
