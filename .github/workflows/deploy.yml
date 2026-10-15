@@ -49,7 +49,24 @@ jobs:
       - name: Validate deployment
         run: pnpm check
 
-      - name: Deploy Workers and bindings
-        run: pnpm deploy
+      - name: Deploy Workers except Family Quest
+        run: pnpm deploy -- --skip-family-quest
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      # Before the Family Quest upload: apply D1 migrations (0001 plus the SRD seed in
+      # 0002–0010) and set Worker secrets. Empty GitHub secrets are skipped with a warning.
+      #   wrangler d1 migrations apply thonbecker-family-quest --remote
+      #   wrangler secret put FAMILY_PASSCODE --name thonbecker-family-quest
+      #   wrangler secret put SESSION_SECRET --name thonbecker-family-quest
+      - name: Apply Family Quest D1 migrations and secrets
+        run: bash scripts/family-quest-predeploy.sh
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          FAMILY_QUEST_PASSCODE: ${{ secrets.FAMILY_QUEST_PASSCODE }}
+          FAMILY_QUEST_SESSION_SECRET: ${{ secrets.FAMILY_QUEST_SESSION_SECRET }}
+
+      - name: Deploy Family Quest
+        run: pnpm deploy -- --only-family-quest
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

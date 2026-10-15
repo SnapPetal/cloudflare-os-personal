@@ -49,8 +49,8 @@ export function setupPage(): string {
   return layout({
     title: "Setup",
     body: `<section class="fq-card card p-4">
-      <h1 class="h3">Family Quest needs its secrets</h1>
-      <p>Set <code>FAMILY_PASSCODE</code> and <code>SESSION_SECRET</code> before anyone sits down at the table. The README has the Wrangler commands. Nothing here calls a paid API.</p>
+      <h1 class="h3">Family Quest is not set up yet</h1>
+      <p>The table is waiting on its family passcode. Set the <code>FAMILY_PASSCODE</code> and <code>SESSION_SECRET</code> Worker secrets, then open this page again. Nothing here calls a paid API.</p>
     </section>`,
   });
 }

@@ -15,6 +15,7 @@ import {
   passwordsMatch,
   readSession,
   requestIsSecure,
+  secretsReady,
   sessionCookie,
 } from "./auth";
 import {
@@ -93,18 +94,18 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   if (path === "/health" && request.method === "GET") {
     return text("ok");
   }
-  if (!secretsReady(env)) return page(setupPage(), 503);
+  if (!secretsReady(env.FAMILY_PASSCODE, env.SESSION_SECRET)) return page(setupPage(), 503);
 
   if (path === "/login" && request.method === "POST") return login(request, env);
   if (path === "/" && request.method === "GET") {
-    const session = await readSession(request, env.SESSION_SECRET);
+    const session = await readSession(request, requireSecret(env.SESSION_SECRET));
     if (!session) return page(loginPage(null));
     const campaigns = await listCampaigns(env.DB);
     return page(homePage(campaigns, session.csrf));
   }
   if (path === "/logout" && request.method === "POST") return logout(request, env);
 
-  const session = await readSession(request, env.SESSION_SECRET);
+  const session = await readSession(request, requireSecret(env.SESSION_SECRET));
   if (!session) return redirect("/");
 
   if (path === "/quests/new" && request.method === "GET") return page(newQuestPage(session.csrf, null));
@@ -150,14 +151,14 @@ export async function handle(request: Request, env: Env): Promise<Response> {
 async function login(request: Request, env: Env): Promise<Response> {
   const form = await readForm(request);
   const provided = clipText(form?.get("passcode"), 200);
-  const matches = await passwordsMatch(provided, env.FAMILY_PASSCODE);
+  const matches = await passwordsMatch(provided, requireSecret(env.FAMILY_PASSCODE));
   if (!matches) return page(loginPage("That passcode did not match."), 401);
-  const created = await createSession(env.SESSION_SECRET);
+  const created = await createSession(requireSecret(env.SESSION_SECRET));
   return redirect("/", sessionCookie(created.cookieValue, requestIsSecure(request)));
 }
 
 async function logout(request: Request, env: Env): Promise<Response> {
-  const session = await readSession(request, env.SESSION_SECRET);
+  const session = await readSession(request, requireSecret(env.SESSION_SECRET));
   if (session) {
     const form = await readForm(request);
     const token = form?.get("csrf");
@@ -988,8 +989,9 @@ async function showLibraryMessage(env: Env, csrf: string, error: string | null, 
   return page(libraryPage({ csrf, notes, total: counts.total, indexed: counts.indexed, preview: [], error, notice }), error ? 400 : 200);
 }
 
-function secretsReady(env: Env): boolean {
-  return env.FAMILY_PASSCODE.trim().length >= 4 && env.SESSION_SECRET.trim().length >= 16;
+function requireSecret(value: string | undefined): string {
+  if (typeof value !== "string") throw new Error("A Family Quest secret is not set.");
+  return value;
 }
 
 function voiceFallback(): Response {

@@ -934,7 +934,36 @@ function reportAiGateway(config: DeploymentConfig): void {
     `--name ${config.workers.workshop.name}\n`);
 }
 
+export type FamilyQuestDeploy = "with-family-quest" | "skip-family-quest" | "only-family-quest";
+
+/** Which Family Quest steps this invocation runs. `--check` always includes the dry run. */
+export function familyQuestDeployMode(argv: readonly string[]): FamilyQuestDeploy {
+  const skip = argv.includes("--skip-family-quest");
+  const only = argv.includes("--only-family-quest");
+  if (skip && only) {
+    throw new Error("Pass only one of --skip-family-quest or --only-family-quest.");
+  }
+  if (argv.includes("--check") && (skip || only)) {
+    throw new Error("--check dry-runs every Worker, including Family Quest.");
+  }
+  if (skip) return "skip-family-quest";
+  if (only) return "only-family-quest";
+  return "with-family-quest";
+}
+
+function runFamilyQuestPredeploy(accountId: string): void {
+  runCommand(
+    "bash",
+    ["scripts/family-quest-predeploy.sh"],
+    root,
+    { ...process.env, CLOUDFLARE_ACCOUNT_ID: accountId },
+    "bash scripts/family-quest-predeploy.sh",
+  );
+}
+
 async function main(): Promise<void> {
+  const mode = familyQuestDeployMode(process.argv);
+  const check = process.argv.includes("--check");
   requireSubmodule();
   const config = await readDeployment(join(root, "deployment.jsonc"));
   const generated = generateConfigs(config, {
@@ -956,29 +985,39 @@ async function main(): Promise<void> {
         generatedPaths[name as keyof typeof generatedPaths],
         JSON.stringify(generatedConfig, null, 2) + "\n");
     }
-    const check = process.argv.includes("--check");
-    if (check) run(["test"]);
-    build(config);
+    // Family Quest-only uploads bundle from source. Skip the OS builds so a migration
+    // failure in the previous workflow step is not followed by rebuilding every Worker.
+    if (mode !== "only-family-quest") {
+      if (check) run(["test"]);
+      build(config);
+    }
     const deployArgs = check ? ["--dry-run"] : [];
     const deployed: Array<[worker: string, versionId: string]> = [];
     const deployOne = (dir: string) => {
       const version = deployWorker(dir, deployArgs);
       if (version) deployed.push(version);
     };
-    if (config.errorReporting.enabled) {
-      deployOne(packageDirs.errorReporter);
+    if (mode !== "only-family-quest") {
+      if (config.errorReporting.enabled) {
+        deployOne(packageDirs.errorReporter);
+      }
+      deployOne(packageDirs.publicChat);
+      deployOne(packageDirs.s3vExplorer);
+      deployOne(packageDirs.context);
+      deployOne(packageDirs.scheduler);
+      deployOne(packageDirs.customGatekeeper);
+      deployOne(packageDirs.workshop);
+      // Last of the OS: it binds every one of the above.
+      deployOne(packageDirs.router);
     }
-    deployOne(packageDirs.publicChat);
-    deployOne(packageDirs.s3vExplorer);
-    deployOne(packageDirs.context);
-    deployOne(packageDirs.scheduler);
-    deployOne(packageDirs.customGatekeeper);
-    deployOne(packageDirs.workshop);
-    // Last of the OS: it binds every one of the above.
-    deployOne(packageDirs.router);
-    // After the router. Family Quest is not on the OS request path and has no public route.
-    // A failure here leaves the OS Workers already updated, instead of blocking them.
-    deployOne(packageDirs.familyQuest);
+    if (mode !== "skip-family-quest") {
+      // After the other Workers. Family Quest is not on the OS request path, so a failure
+      // here leaves those Workers already updated. Migrations and secrets run first on a
+      // full `pnpm deploy`. The Deploy workflow runs that script as its own step, between
+      // `--skip-family-quest` and `--only-family-quest`, so this branch does not repeat it.
+      if (!check && mode === "with-family-quest") runFamilyQuestPredeploy(config.accountId);
+      deployOne(packageDirs.familyQuest);
+    }
     // A dry run reports no versions, and an entry with holes in it is worse than none.
     if (!check && deployed.length > 0) await appendDeploymentLog(deployed);
   } finally {

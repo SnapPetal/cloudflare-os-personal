@@ -30,7 +30,7 @@ Ready-made premises: The Lost Picnic, The Birthday Dragon, The Library of Living
 
 ## Bestiary
 
-The bestiary is the D&D Systems Reference Document 5.1 monster list, 334 stat blocks, loaded into D1 by `migrations/0002_srd.sql`. The Dungeon Master may only start a fight with names from that table (or a family critter) at a challenge rating that fits the party's level. The server copies hit points, armor class, attack bonus, and damage dice from the row. It rolls those dice. Save-based riders such as poison and breath weapons stay on the stat block and are not applied automatically.
+The bestiary is the D&D Systems Reference Document 5.1 monster list, 334 stat blocks, loaded into D1 by `migrations/0002_srd.sql` through `migrations/0010_srd.sql`. Those files are one seed split so each stays under D1's 100 KB query limit. The Dungeon Master may only start a fight with names from that table (or a family critter) at a challenge rating that fits the party's level. The server copies hit points, armor class, attack bonus, and damage dice from the row. It rolls those dice. Save-based riders such as poison and breath weapons stay on the stat block and are not applied automatically.
 
 Family critters are created from the Bestiary page. SRD rows are not editable.
 
@@ -91,15 +91,18 @@ Open the URL Wrangler prints (usually `http://localhost:8787`). The session cook
 
 ## Deploy
 
-Do not run `wrangler deploy` from this package. The repository Deploy workflow (`pnpm deploy`) uploads this Worker with the others.
+Do not run `wrangler deploy` from this package. The repository Deploy workflow uploads this Worker after the others.
 
-On the next push to `main` that includes this package:
+On a push to `main`:
 
-- The Worker script is uploaded as `thonbecker-family-quest`.
-- `workers.dev` stays off and no custom domain is attached. There is no public URL.
-- Wrangler provisions the D1 database `thonbecker-family-quest` and applies `migrations/`, and provisions the R2 binding `NOTES`.
+- The other Workers deploy first. Family Quest is not on their request path.
+- `wrangler d1 migrations apply thonbecker-family-quest --remote` applies `migrations/`, including the SRD seed, before this Worker is uploaded.
+- The workflow sets `FAMILY_PASSCODE` and `SESSION_SECRET` from the GitHub Actions secrets `FAMILY_QUEST_PASSCODE` and `FAMILY_QUEST_SESSION_SECRET`. An empty GitHub secret is skipped with a warning. The table then shows a "not set up yet" page instead of an error.
+- The Worker script is uploaded as `thonbecker-family-quest` on `quest.thonbecker.biz`.
+- Wrangler provisions the D1 database `thonbecker-family-quest` and the R2 binding `NOTES` if they do not exist yet. Migrations do not create the database; the first deploy does.
 - Vectorize is not created. Semantic search stays on the D1 text fallback.
-- `FAMILY_PASSCODE` and `SESSION_SECRET` are not required for that upload. Set them before anyone should be able to open the table:
+
+To set the secrets by hand:
 
 ```bash
 printf '%s' 'your-family-passcode' | pnpm exec wrangler secret put FAMILY_PASSCODE --name thonbecker-family-quest
@@ -108,7 +111,7 @@ printf '%s' "$(openssl rand -base64 32)" | pnpm exec wrangler secret put SESSION
 
 ### quest.thonbecker.biz
 
-The production hostname is already set in `deployment.jsonc`. Wrangler creates the DNS and TLS custom domain on deploy when the `thonbecker.biz` zone is in the same Cloudflare account. The table still shows the setup page until `FAMILY_PASSCODE` and `SESSION_SECRET` are set.
+The production hostname is set in `deployment.jsonc`. Wrangler creates the DNS and TLS custom domain on deploy when the `thonbecker.biz` zone is in the same Cloudflare account. Until both Worker secrets are set, the site shows the setup page.
 
 ## Tests
 
@@ -128,5 +131,5 @@ Vitest covers the dice roller (including unbiased sampling, advantage, and disad
 - `src/ai.ts` — Workers AI text and MeloTTS audio
 - `src/auth.ts` — passcode check and HMAC session cookie
 - `migrations/0001_init.sql` — quests, heroes, messages
-- `migrations/0002_srd.sql` — SRD bestiary and rules library
+- `migrations/0002_srd.sql` through `migrations/0010_srd.sql` — SRD bestiary and rules library
 - `public/` — vendored Bootstrap, Alpine, htmx, Noto Sans, and app CSS/JS

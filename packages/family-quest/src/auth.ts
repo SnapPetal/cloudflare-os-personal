@@ -12,6 +12,14 @@ interface SessionPayload {
   csrf: string;
 }
 
+/** True when both Worker secrets are present and long enough to open the table. */
+export function secretsReady(passcode: unknown, sessionSecret: unknown): boolean {
+  return typeof passcode === "string"
+    && passcode.trim().length >= 4
+    && typeof sessionSecret === "string"
+    && sessionSecret.trim().length >= 16;
+}
+
 export async function passwordsMatch(provided: string, expected: string): Promise<boolean> {
   const encoder = new TextEncoder();
   const [left, right] = await Promise.all([

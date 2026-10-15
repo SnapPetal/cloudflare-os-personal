@@ -9,6 +9,11 @@ interface Env {
   AI_MODEL_FALLBACK: string;
   TTS_MODEL: string;
   EMBED_MODEL: string;
-  FAMILY_PASSCODE: string;
-  SESSION_SECRET: string;
+  /**
+   * Shared family passcode. Absent until the Deploy workflow sets it, and then it is
+   * `undefined` rather than an empty string. `secretsReady` treats that as not set up.
+   */
+  FAMILY_PASSCODE?: string;
+  /** HMAC key for the session cookie. Absent, not `""`, until the Deploy workflow sets it. */
+  SESSION_SECRET?: string;
 }
