@@ -71,6 +71,9 @@ export default defineConfig({
       '**/node_modules/**',
       '**/.wrangler/**',
       '**/worker-configuration.d.ts',
+      'packages/family-quest/public/vendor/**',
+      'packages/family-quest/data/**',
+      'packages/family-quest/migrations/**',
     ],
     overrides: [
       {

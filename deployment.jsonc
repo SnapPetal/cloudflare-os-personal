@@ -33,6 +33,13 @@
       "name": "thonbecker-s3v-explorer",
       "route": { "workersDev": false }
     },
+    // Family Quest. Custom domain on quest.thonbecker.biz. Wrangler provisions its D1 database
+    // and R2 bucket on deploy. Vectorize is not declared: Wrangler does not provision indexes,
+    // and a missing index would fail this workflow. Text search works until the binding is added.
+    "familyQuest": {
+      "name": "thonbecker-family-quest",
+      "route": { "customDomain": "quest.thonbecker.biz" }
+    },
     "context": { "name": "thonbecker-personal-os-context" },
 
     // The Scheduler Gatekeeper, which gives agents scheduled and recurring work. Ambient like

@@ -1,0 +1,128 @@
+@font-face {
+  font-family: "Noto Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/noto-sans-latin-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Noto Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/noto-sans-latin-700.woff2") format("woff2");
+}
+
+:root {
+  color-scheme: light;
+  --fq-paper: #f3ecdf;
+  --fq-ink: #241c14;
+  --fq-moss: #1f6a45;
+  --fq-card: #fffaf2;
+  --fq-line: #e4d8c4;
+}
+
+[data-bs-theme="dark"] {
+  color-scheme: dark;
+  --fq-paper: #16130f;
+  --fq-ink: #f6f0e6;
+  --fq-moss: #8dcfb0;
+  --fq-card: #221c16;
+  --fq-line: #3a3127;
+}
+
+body {
+  background:
+    radial-gradient(circle at top left, rgba(31, 106, 69, 0.08), transparent 28rem),
+    var(--fq-paper);
+  color: var(--fq-ink);
+  font-family: "Noto Sans", sans-serif;
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+.h1,
+.h2,
+.h3,
+.btn,
+.navbar-brand {
+  font-family: "Noto Sans", sans-serif;
+}
+
+.fq-card,
+.card {
+  background: var(--fq-card);
+  border-color: var(--fq-line);
+}
+
+.fq-mark {
+  color: var(--fq-moss);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.story-log {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 42rem;
+  overflow: auto;
+}
+
+.story-entry {
+  border: 1px solid var(--fq-line);
+  border-radius: 0.9rem;
+  padding: 0.85rem 1rem;
+}
+
+.story-entry.dm {
+  border-left: 4px solid var(--fq-moss);
+}
+
+.story-entry.roll,
+.story-entry.system {
+  background: rgba(165, 107, 43, 0.08);
+}
+
+.hp-row {
+  display: grid;
+  grid-template-columns: 7rem 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.htmx-indicator {
+  display: none;
+}
+
+.htmx-request .htmx-indicator {
+  display: inline-block;
+}
+
+.ability-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.ability-grid div {
+  border: 1px solid var(--fq-line);
+  border-radius: 0.6rem;
+  padding: 0.35rem 0.2rem;
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .ability-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .hp-row {
+    grid-template-columns: 1fr;
+  }
+}

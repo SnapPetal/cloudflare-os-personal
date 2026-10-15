@@ -2,4 +2,5 @@ node_modules/
 packages/*/dist/
 packages/*/.wrangler/
 packages/*/wrangler.prod.jsonc
+packages/*/.dev.vars
 deployment.local.jsonc

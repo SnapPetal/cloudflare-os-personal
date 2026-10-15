@@ -111,6 +111,8 @@ export interface DeploymentConfig {
     workshop: { name: string };
     publicChat: { name: string; route: RouterRoute };
     s3vExplorer: { name: string; route: RouterRoute };
+    /** Public Family Quest table. Prefer a custom domain such as quest.thonbecker.biz. */
+    familyQuest: { name: string; route: RouterRoute };
     context: { name: string };
     scheduler: { name: string };
     customGatekeeper: { name: string };
@@ -189,6 +191,7 @@ export interface GeneratedConfigs {
   workshop: ProdWranglerConfig;
   publicChat: ProdWranglerConfig;
   s3vExplorer: ProdWranglerConfig;
+  familyQuest: ProdWranglerConfig;
   context: ProdWranglerConfig;
   scheduler: ProdWranglerConfig;
   customGatekeeper: ProdWranglerConfig;
@@ -202,6 +205,7 @@ export interface BaseConfigs {
   workshop: ProdWranglerConfig;
   publicChat: ProdWranglerConfig;
   s3vExplorer: ProdWranglerConfig;
+  familyQuest: ProdWranglerConfig;
   context: ProdWranglerConfig;
   scheduler: ProdWranglerConfig;
   customGatekeeper: ProdWranglerConfig;
