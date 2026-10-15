@@ -1,10 +1,11 @@
+import type { Viewer } from "./auth";
 import { crOptions, attackSummary, type MonsterStat } from "./bestiary";
-import { layout, csrfInput } from "./view";
+import { layout } from "./view";
 import type { LoreRow, NoteRow } from "./repo";
 import { escapeHtml } from "./text";
 
 export function bestiaryPage(input: {
-  csrf: string;
+  viewer: Viewer;
   monsters: MonsterStat[];
   query: string;
   showAll: boolean;
@@ -24,7 +25,7 @@ export function bestiaryPage(input: {
   const all = input.showAll ? "" : `<a class="btn btn-link" href="/bestiary?all=1">Show the whole SRD</a>`;
   return layout({
     title: "Bestiary",
-    csrf: input.csrf,
+    viewer: input.viewer,
     body: `<div class="d-flex justify-content-between flex-wrap gap-3 mb-3">
       <div>
         <p class="fq-mark mb-1">SRD 5.1</p>
@@ -47,7 +48,7 @@ export function bestiaryPage(input: {
   });
 }
 
-export function monsterPage(monster: MonsterStat, csrf: string, error: string | null): string {
+export function monsterPage(monster: MonsterStat, viewer: Viewer, error: string | null): string {
   const attacks = monster.attacks
     .map(
       (attack) =>
@@ -59,16 +60,15 @@ export function monsterPage(monster: MonsterStat, csrf: string, error: string | 
   const notice = error ? `<div class="alert alert-warning">${escapeHtml(error)}</div>` : "";
   const editor =
     monster.source === "homebrew"
-      ? `${notice}${monsterForm(monster, csrf, "Save changes")}
+      ? `${notice}${monsterForm(monster, "Save changes")}
       <form class="mt-3" method="post" action="/bestiary/${escapeHtml(monster.id)}/delete">
-        ${csrfInput(csrf)}
         <label class="form-check"><input class="form-check-input" type="checkbox" name="confirm" value="yes"> Delete this family critter</label>
         <button class="btn btn-outline-danger btn-sm" type="submit">Delete</button>
       </form>`
       : `${notice}<p class="small text-secondary">SRD stat blocks stay as published. Add a family critter if you want a new one.</p>`;
   return layout({
     title: monster.name,
-    csrf,
+    viewer,
     body: `<p class="fq-mark mb-1">${monster.source === "homebrew" ? "Family critter" : "SRD 5.1"}</p>
       <h1 class="h2">${escapeHtml(monster.name)}</h1>
       <p>${escapeHtml(monster.size)} ${escapeHtml(monster.type)} · CR ${escapeHtml(monster.crLabel)} · ${monster.xp} XP · AC ${monster.ac} · HP ${monster.hp}${monster.hitDice ? ` (${escapeHtml(monster.hitDice)})` : ""} · Dex ${monster.dexterity}</p>
@@ -81,18 +81,18 @@ export function monsterPage(monster: MonsterStat, csrf: string, error: string | 
   });
 }
 
-export function newMonsterPage(csrf: string, error: string | null): string {
+export function newMonsterPage(viewer: Viewer, error: string | null): string {
   return layout({
     title: "New critter",
-    csrf,
+    viewer,
     body: `<h1 class="h2">New family critter</h1>
       ${error ? `<div class="alert alert-warning">${escapeHtml(error)}</div>` : ""}
-      ${monsterForm(null, csrf, "Save critter")}`,
+      ${monsterForm(null, "Save critter")}`,
   });
 }
 
 export function libraryPage(input: {
-  csrf: string;
+  viewer: Viewer;
   notes: NoteRow[];
   total: number;
   indexed: number;
@@ -103,7 +103,7 @@ export function libraryPage(input: {
   const notes = input.notes
     .map(
       (note) => `<li class="mb-2">${escapeHtml(note.title)} <span class="text-secondary">(${note.bytes} bytes)</span>
-        <form class="d-inline" method="post" action="/library/notes/${escapeHtml(note.id)}/delete">${csrfInput(input.csrf)}<button class="btn btn-link btn-sm" type="submit">Remove</button></form>
+        <form class="d-inline" method="post" action="/library/notes/${escapeHtml(note.id)}/delete"><button class="btn btn-link btn-sm" type="submit">Remove</button></form>
       </li>`,
     )
     .join("");
@@ -112,18 +112,17 @@ export function libraryPage(input: {
     .join("");
   return layout({
     title: "Library",
-    csrf: input.csrf,
+    viewer: input.viewer,
     body: `<p class="fq-mark mb-1">Rules and family notes</p>
       <h1 class="h2">Library</h1>
       <p>The Dungeon Master checks this library before answering a rules or lore question. ${input.indexed} of ${input.total} snippets are in the vector index.</p>
       ${input.error ? `<div class="alert alert-warning">${escapeHtml(input.error)}</div>` : ""}
       ${input.notice ? `<div class="alert alert-success">${escapeHtml(input.notice)}</div>` : ""}
-      <form class="fq-card card p-3 mb-3" method="post" action="/library/index">${csrfInput(input.csrf)}
+      <form class="fq-card card p-3 mb-3" method="post" action="/library/index">
         <button class="btn btn-success" type="submit">Index the next batch</button>
         <p class="small mb-0 mt-2">Each batch is one Workers AI embedding call and counts toward today's cap. It uses @cf/baai/bge-small-en-v1.5.</p>
       </form>
       <form class="fq-card card p-3 mb-4" method="post" action="/library/notes">
-        ${csrfInput(input.csrf)}
         <h2 class="h5">Family notes</h2>
         <label class="form-label" for="title">Title</label>
         <input class="form-control mb-2" id="title" name="title" maxlength="80" required>
@@ -141,7 +140,7 @@ export function libraryPage(input: {
   });
 }
 
-function monsterForm(monster: MonsterStat | null, csrf: string, label: string): string {
+function monsterForm(monster: MonsterStat | null, label: string): string {
   const action = monster ? `/bestiary/${escapeHtml(monster.id)}` : "/bestiary";
   const options = crOptions()
     .map(
@@ -158,7 +157,6 @@ function monsterForm(monster: MonsterStat | null, csrf: string, label: string): 
     </div>`;
   };
   return `<form class="fq-card card p-3" method="post" action="${action}">
-    ${csrfInput(csrf)}
     <label class="form-label" for="name">Name</label>
     <input class="form-control mb-2" id="name" name="name" required maxlength="40" value="${escapeHtml(monster?.name ?? "")}">
     <div class="row g-2 mb-2">

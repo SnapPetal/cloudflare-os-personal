@@ -9,6 +9,14 @@ interface Env {
   AI_MODEL_FALLBACK: string;
   TTS_MODEL: string;
   EMBED_MODEL: string;
-  FAMILY_PASSCODE: string;
-  SESSION_SECRET: string;
+  /**
+   * Optional. Team origin such as `https://<team>.cloudflareaccess.com`.
+   * JWT verification runs only when this and `ACCESS_AUD` are both set.
+   */
+  ACCESS_TEAM_DOMAIN?: string;
+  /**
+   * Optional AUD tag for the Access application. Not required: quest.thonbecker.biz
+   * is added to the existing os.thonbecker.biz application.
+   */
+  ACCESS_AUD?: string;
 }

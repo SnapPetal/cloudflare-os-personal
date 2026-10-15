@@ -1,3 +1,5 @@
-# Copy to .dev.vars for `wrangler dev`. Never commit .dev.vars.
-FAMILY_PASSCODE=change-me
-SESSION_SECRET=change-me-to-a-long-random-string
+# Family Quest has no Worker secrets.
+# Sign-in is the existing os.thonbecker.biz Cloudflare Access application.
+# Leave these unset unless you want the Worker to verify the Access JWT.
+# ACCESS_TEAM_DOMAIN=https://<team>.cloudflareaccess.com
+# ACCESS_AUD=<application-aud-tag>

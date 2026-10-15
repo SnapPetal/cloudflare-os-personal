@@ -3,28 +3,36 @@
  *
  *   node scripts/build-srd.mjs          # download the pinned commit and rewrite data + migration
  *   node scripts/build-srd.mjs --check  # validate the committed files, no network
+ *   node scripts/build-srd.mjs --repack # split the committed SQL under D1's query limit, no network
  *
  * Source: https://github.com/5e-bits/5e-database (MIT for the compilation).
  * The JSON is the D&D 5.1 Systems Reference Document, © Wizards of the Coast LLC, CC BY 4.0.
  * Only the SRD files are read. Madness, diseases, and poisons are left out of the family library.
  */
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const COMMIT = "a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DATA = path.join(ROOT, "data");
+const MIGRATIONS = path.join(ROOT, "migrations");
 const RAW = "https://raw.githubusercontent.com/5e-bits/5e-database/" + COMMIT + "/src/2014/en";
 const SKIP_RULES = new Set(["madness", "diseases", "poisons"]);
 const NUMBER_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6 };
+// `wrangler d1 migrations apply` sends each file as one D1 query. The platform limit is
+// 100,000 bytes for that SQL string. 90,000 leaves room for the d1_migrations INSERT
+// Wrangler appends when it records the file.
+const MAX_MIGRATION_BYTES = 90_000;
 
 const monstersPath = path.join(DATA, "srd-monsters.json");
 const lorePath = path.join(DATA, "srd-lore.json");
-const migrationPath = path.join(ROOT, "migrations", "0002_srd.sql");
 
 if (process.argv.includes("--check")) {
+  await check();
+} else if (process.argv.includes("--repack")) {
+  await writePackedMigrations((await readCombinedMigration()).sql);
   await check();
 } else {
   await build();
@@ -71,6 +79,7 @@ async function build() {
   assertUnique(catalog.map((monster) => monster.id), "monster id");
   assertUnique(lore.map((chunk) => chunk.id), "lore id");
   await mkdir(DATA, { recursive: true });
+  await writePackedMigrations(migrationSql(catalog, lore));
   const monsterDoc = {
     license: "CC-BY-4.0",
     work: "Dungeons & Dragons Systems Reference Document 5.1",
@@ -92,15 +101,77 @@ async function build() {
   };
   await writeFile(monstersPath, JSON.stringify(monsterDoc));
   await writeFile(lorePath, JSON.stringify(loreDoc));
-  await writeFile(migrationPath, migrationSql(catalog, lore));
   console.log(`monsters ${catalog.length}, lore chunks ${lore.length}`);
   await check();
+}
+
+async function srdMigrationNames() {
+  const names = (await readdir(MIGRATIONS)).filter((name) => /^\d{4}_srd\.sql$/.test(name));
+  names.sort();
+  return names;
+}
+
+async function readCombinedMigration() {
+  const names = await srdMigrationNames();
+  if (names.length === 0) throw new Error("SRD migration files are missing.");
+  const parts = await Promise.all(names.map((name) => readFile(path.join(MIGRATIONS, name), "utf8")));
+  return { names, parts, sql: parts.join("") };
+}
+
+function statementsOf(source) {
+  const statements = [];
+  let current = [];
+  for (const line of source.split("\n")) {
+    current.push(line);
+    if (line.endsWith(";")) {
+      statements.push(current.join("\n"));
+      current = [];
+    }
+  }
+  if (current.some((line) => line.trim())) statements.push(current.join("\n"));
+  return statements;
+}
+
+async function writePackedMigrations(source) {
+  const files = [];
+  let chunk = [];
+  let size = 0;
+  for (const statement of statementsOf(source)) {
+    const piece = `${statement}\n`;
+    const bytes = Buffer.byteLength(piece);
+    if (bytes > MAX_MIGRATION_BYTES) {
+      throw new Error(`A single SRD statement is ${bytes} bytes, over the D1 query limit.`);
+    }
+    if (chunk.length > 0 && size + bytes > MAX_MIGRATION_BYTES) {
+      files.push(chunk.join(""));
+      chunk = [];
+      size = 0;
+    }
+    chunk.push(piece);
+    size += bytes;
+  }
+  if (chunk.length > 0) files.push(chunk.join(""));
+  const existing = await srdMigrationNames();
+  await Promise.all(existing.map((name) => unlink(path.join(MIGRATIONS, name))));
+  await mkdir(MIGRATIONS, { recursive: true });
+  for (let index = 0; index < files.length; index += 1) {
+    const name = `${String(index + 2).padStart(4, "0")}_srd.sql`;
+    await writeFile(path.join(MIGRATIONS, name), files[index]);
+  }
+  console.log(`SRD migration packed into ${files.length} files under ${MAX_MIGRATION_BYTES} bytes each.`);
 }
 
 async function check() {
   const monsters = JSON.parse(await readFile(monstersPath, "utf8"));
   const lore = JSON.parse(await readFile(lorePath, "utf8"));
-  const migration = await readFile(migrationPath, "utf8");
+  const { names, parts, sql: migration } = await readCombinedMigration();
+  for (let index = 0; index < parts.length; index += 1) {
+    const bytes = Buffer.byteLength(parts[index]);
+    if (bytes > MAX_MIGRATION_BYTES) {
+      throw new Error(`${names[index]} is ${bytes} bytes. D1 rejects a migration query over 100000 bytes.`);
+    }
+  }
+  if (!parts[0].includes("CREATE TABLE monsters")) throw new Error("SRD schema is not in the first migration file.");
   if (monsters.commit !== COMMIT || lore.commit !== COMMIT) throw new Error("SRD commit pin drifted.");
   if (monsters.monsters.length < 300) throw new Error(`Expected about 300 monsters, found ${monsters.monsters.length}.`);
   const goblin = monsters.monsters.find((monster) => monster.id === "goblin");

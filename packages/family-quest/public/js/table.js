@@ -42,15 +42,11 @@ document.addEventListener("alpine:init", () => {
         this.audio.pause();
         this.audio = null;
       }
-      const token = document.querySelector('meta[name="fq-csrf"]')?.content || "";
       const quest = document.body.dataset.quest || "";
       try {
         const response = await fetch(`/quests/${quest}/tts`, {
           method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-family-quest-token": token,
-          },
+          headers: { "content-type": "application/json" },
           body: JSON.stringify({ text }),
         });
         const type = response.headers.get("content-type") || "";

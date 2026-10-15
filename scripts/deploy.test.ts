@@ -7,6 +7,7 @@ import {
   buildCommands,
   COMPATIBILITY_DATE,
   deploymentLogEntry,
+  familyQuestDeployMode,
   generateConfigs,
   validateConfig,
 } from "./deploy.ts";
@@ -731,6 +732,9 @@ test("deployment.jsonc owns workers_dev, invocation logs, traces, and the compat
     { pattern: "quest.thonbecker.biz", custom_domain: true },
   ]);
   assert.equal(generated.familyQuest.vars?.AI_MODEL, "@cf/meta/llama-3.3-70b-instruct-fp8-fast");
+  assert.equal(generated.familyQuest.vars?.ACCESS_AUD, undefined);
+  assert.equal(generated.familyQuest.vars?.ACCESS_TEAM_DOMAIN, undefined);
+  assert.equal(generated.workshop.vars?.CF_ACCESS_AUD, deployment.access.audience);
   assert.equal(deployment.workers.familyQuest.name, "thonbecker-family-quest");
 
   const commands = buildCommands(deployment).map(({ args }) => args.join(" "));
@@ -743,6 +747,29 @@ test("deployment.jsonc owns workers_dev, invocation logs, traces, and the compat
   ]) {
     assert.ok(commands.some((command) => command.includes(`-F ${name}`)), name);
   }
+});
+
+test("Family Quest flags do not change a full check or mix the two modes", () => {
+  assert.equal(familyQuestDeployMode(["--check"]), "with-family-quest");
+  assert.equal(familyQuestDeployMode(["--skip-family-quest"]), "skip-family-quest");
+  assert.equal(familyQuestDeployMode(["--only-family-quest"]), "only-family-quest");
+  assert.throws(() => familyQuestDeployMode(["--skip-family-quest", "--only-family-quest"]), /only one/);
+  assert.throws(() => familyQuestDeployMode(["--check", "--skip-family-quest"]), /dry-runs every Worker/);
+});
+
+test("Deploy workflow applies Family Quest migrations before that Worker deploys", async () => {
+  const workflow = await readFile(new URL("../.github/workflows/deploy.yml", import.meta.url), "utf8");
+  const script = await readFile(new URL("./family-quest-predeploy.sh", import.meta.url), "utf8");
+  const skip = workflow.indexOf("pnpm deploy -- --skip-family-quest");
+  const prepare = workflow.indexOf("bash scripts/family-quest-predeploy.sh");
+  const only = workflow.indexOf("pnpm deploy -- --only-family-quest");
+  assert.ok(skip !== -1 && prepare !== -1 && only !== -1);
+  assert.ok(skip < prepare && prepare < only);
+  assert.equal(workflow.includes("FAMILY_QUEST_PASSCODE"), false);
+  assert.equal(workflow.includes("FAMILY_QUEST_SESSION_SECRET"), false);
+  assert.equal(workflow.includes("secret put"), false);
+  assert.match(script, /wrangler d1 migrations apply thonbecker-family-quest --remote/);
+  assert.equal(script.includes("secret put"), false);
 });
 
 test("records a partial deployment rather than dropping what did ship", () => {
