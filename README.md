@@ -119,7 +119,7 @@ Git-backed Context collections are disabled by default. Accounts with Artifacts 
 
 Backend error reporting is enabled without a vendor account. Explicit upstream issue events become structured logs in the private Error Reporter Worker; see [Observability and error reporting](docs/observability.md).
 
-Family Quest (`packages/family-quest`, Worker `thonbecker-family-quest`) is in this same deploy. `workers.familyQuest.route` is `{ "workersDev": false }` with no custom domain, so merging uploads the Worker and lets Wrangler provision its D1 database and R2 bucket, and does not attach `quest.thonbecker.biz` or a `workers.dev` hostname. Vectorize is not declared, because Wrangler does not provision indexes and a missing index would fail this workflow. Set a `customDomain` on that route only when the hostname should go live. See `packages/family-quest/README.md`.
+Family Quest (`packages/family-quest`, Worker `thonbecker-family-quest`) is in this same deploy. `workers.familyQuest.route` is `{ "customDomain": "quest.thonbecker.biz" }`, so merging uploads the Worker, attaches that hostname, and lets Wrangler provision its D1 database and R2 bucket. Vectorize is not declared, because Wrangler does not provision indexes and a missing index would fail this workflow. See `packages/family-quest/README.md`.
 
 ### 4. Verify the deployment
 

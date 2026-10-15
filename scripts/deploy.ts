@@ -271,6 +271,7 @@ export function validateConfig(config: DeploymentConfig): DeploymentConfig {
 
   for (const [label, workerRoute] of [
     ["Public chat", config.workers.publicChat.route],
+    ["Family Quest", config.workers.familyQuest.route],
   ] as const) {
     if (!workerRoute || Boolean(workerRoute.workersDev) === Boolean(workerRoute.customDomain)) {
       throw new Error(`Set exactly one ${label} route: workersDev or customDomain.`);
@@ -287,12 +288,6 @@ export function validateConfig(config: DeploymentConfig): DeploymentConfig {
   if (config.workers.s3vExplorer.route.workersDev !== false ||
       config.workers.s3vExplorer.route.customDomain !== undefined) {
     throw new Error("S3 Vector Explorer must use workersDev: false without a public domain.");
-  }
-  if (config.workers.familyQuest.route.workersDev !== false ||
-      config.workers.familyQuest.route.customDomain !== undefined) {
-    throw new Error(
-      "Family Quest must use workersDev: false without a public domain. " +
-      "A custom domain would attach a live hostname on the next deploy.");
   }
   for (const [label, value] of [
     ["s3vExplorer.region", config.s3vExplorer.region],

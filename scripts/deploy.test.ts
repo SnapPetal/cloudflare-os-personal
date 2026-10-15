@@ -25,7 +25,7 @@ const validConfig: DeploymentConfig = {
     workshop: { name: "acme-cloudflare-os-backend" },
     publicChat: { name: "acme-cloudflare-os-chat", route: { customDomain: "chat.example.com" } },
     s3vExplorer: { name: "acme-cloudflare-os-vectors", route: { workersDev: false } },
-    familyQuest: { name: "acme-cloudflare-os-quest", route: { workersDev: false } },
+    familyQuest: { name: "acme-cloudflare-os-quest", route: { customDomain: "quest.example.com" } },
     context: { name: "acme-cloudflare-os-context" },
     scheduler: { name: "acme-cloudflare-os-scheduler" },
     customGatekeeper: { name: "acme-cloudflare-os-custom" },
@@ -359,7 +359,7 @@ test("keeps every Worker behind the router off the public internet", async () =>
   const workers = Object.entries(generated) as [string, ProdWranglerConfig][];
 
   for (const [name, worker] of workers) {
-    if (name !== "router" && name !== "publicChat") {
+    if (name !== "router" && name !== "publicChat" && name !== "familyQuest") {
       assert.equal(worker.workers_dev, false, `${name} answers on workers.dev`);
       assert.equal(worker.routes, undefined, `${name} carries a public route`);
     }
@@ -727,7 +727,9 @@ test("deployment.jsonc owns workers_dev, invocation logs, traces, and the compat
     "thonbecker-s3v-explorer",
   );
   assert.equal(generated.familyQuest.workers_dev, false);
-  assert.equal(generated.familyQuest.routes, undefined);
+  assert.deepEqual(generated.familyQuest.routes, [
+    { pattern: "quest.thonbecker.biz", custom_domain: true },
+  ]);
   assert.equal(generated.familyQuest.vars?.AI_MODEL, "@cf/meta/llama-3.3-70b-instruct-fp8-fast");
   assert.equal(deployment.workers.familyQuest.name, "thonbecker-family-quest");
 

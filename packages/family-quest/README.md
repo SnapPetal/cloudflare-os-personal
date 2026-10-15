@@ -8,7 +8,7 @@ Nothing in this app calls a paid third-party API or asks for a new API key. Work
 
 This Worker lives in `packages/family-quest` of `SnapPetal/cloudflare-os-personal`. Its name is `thonbecker-family-quest`. A separate `SnapPetal/family-quest` repository was not created.
 
-Merging does not publish a hostname. `deployment.jsonc` sets `workers.familyQuest.route` to `{ "workersDev": false }` and no custom domain, and the deploy script rejects any other route. The shared Deploy workflow still uploads the Worker, and Wrangler provisions its D1 database and R2 notes bucket on that deploy. Nothing answers on `quest.thonbecker.biz` until that route is changed to a custom domain. Vectorize is not in the Wrangler config: Wrangler does not create indexes, and a missing index would fail the deploy of this repository. Rules and notes are still searchable as text. Add the `vectorize` binding after `npx wrangler vectorize create thonbecker-family-quest-lore --dimensions=384 --metric=cosine`.
+`deployment.jsonc` sets `workers.familyQuest.route` to `{ "customDomain": "quest.thonbecker.biz" }`. Merging uploads the Worker, attaches that hostname, and lets Wrangler provision its D1 database and R2 notes bucket. Set `FAMILY_PASSCODE` and `SESSION_SECRET` before anyone should open the table. Vectorize is not in the Wrangler config: Wrangler does not create indexes, and a missing index would fail the deploy of this repository. Rules and notes are still searchable as text. Add the `vectorize` binding after `npx wrangler vectorize create thonbecker-family-quest-lore --dimensions=384 --metric=cosine`.
 
 ## What you can do
 
@@ -108,7 +108,7 @@ printf '%s' "$(openssl rand -base64 32)" | pnpm exec wrangler secret put SESSION
 
 ### quest.thonbecker.biz
 
-When that hostname exists in the `thonbecker.biz` zone and should go live, change `workers.familyQuest.route` in `deployment.jsonc` to `{ "customDomain": "quest.thonbecker.biz" }` and relax the deploy-script check that currently rejects any public route. Until then, deploy keeps the Worker private.
+The production hostname is already set in `deployment.jsonc`. Wrangler creates the DNS and TLS custom domain on deploy when the `thonbecker.biz` zone is in the same Cloudflare account. The table still shows the setup page until `FAMILY_PASSCODE` and `SESSION_SECRET` are set.
 
 ## Tests
 

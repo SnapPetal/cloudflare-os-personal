@@ -111,7 +111,7 @@ export interface DeploymentConfig {
     workshop: { name: string };
     publicChat: { name: string; route: RouterRoute };
     s3vExplorer: { name: string; route: RouterRoute };
-    /** No public route until a hostname is chosen. `workersDev: false` and no custom domain. */
+    /** Public Family Quest table. Prefer a custom domain such as quest.thonbecker.biz. */
     familyQuest: { name: string; route: RouterRoute };
     context: { name: string };
     scheduler: { name: string };

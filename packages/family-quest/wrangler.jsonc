@@ -4,8 +4,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
-  // No public hostname. deployment.jsonc keeps workers.dev off and sets no custom domain,
-  // so `pnpm deploy` uploads this Worker without attaching quest.thonbecker.biz.
+  // Base config stays off workers.dev. deployment.jsonc attaches quest.thonbecker.biz
+  // in the generated production Wrangler config.
   "workers_dev": false,
   "preview_urls": false,
   "assets": {

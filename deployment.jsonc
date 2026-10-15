@@ -33,14 +33,12 @@
       "name": "thonbecker-s3v-explorer",
       "route": { "workersDev": false }
     },
-    // Family Quest. workers.dev is off and there is no custom domain, so a merge uploads the
-    // Worker without attaching a hostname. Do not set customDomain until quest.thonbecker.biz
-    // should answer. Wrangler provisions its D1 database and R2 bucket on that deploy.
-    // Vectorize is not declared: Wrangler does not provision indexes, and a missing index would
-    // fail this workflow. Text search works until the binding is added.
+    // Family Quest. Custom domain on quest.thonbecker.biz. Wrangler provisions its D1 database
+    // and R2 bucket on deploy. Vectorize is not declared: Wrangler does not provision indexes,
+    // and a missing index would fail this workflow. Text search works until the binding is added.
     "familyQuest": {
       "name": "thonbecker-family-quest",
-      "route": { "workersDev": false }
+      "route": { "customDomain": "quest.thonbecker.biz" }
     },
     "context": { "name": "thonbecker-personal-os-context" },
 
