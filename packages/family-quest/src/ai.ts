@@ -10,6 +10,35 @@ export interface Narration {
   model: string;
 }
 
+/** Narration stand-in used when the Worker has no AI binding. */
+export function stubAiBinding(): AiBinding {
+  return {
+    async run(_model: string, input: Record<string, unknown>): Promise<unknown> {
+      const messages = Array.isArray(input.messages) ? input.messages : [];
+      const system = messages.find((message) => isSystem(message));
+      const content = system ? String(system.content) : "";
+      if (content.includes("Choose one action")) {
+        return { response: JSON.stringify({ action: "dodge", targetId: "", flavor: "The critter ducks and grins." }) };
+      }
+      return {
+        response: JSON.stringify({
+          narration: "A stub Dungeon Master sets a sunny scene and asks what you do next.",
+          npcLines: [{ name: "Pip", line: "The picnic basket is this way." }],
+          rollRequest: null,
+          summary: "The quest has begun under a warm sky.",
+          encounter: null,
+        }),
+      };
+    },
+  };
+}
+
+function isSystem(message: unknown): message is { role: string; content: string } {
+  if (!message || typeof message !== "object") return false;
+  const record = message as { role?: unknown; content?: unknown };
+  return record.role === "system" && typeof record.content === "string";
+}
+
 export async function narrate(
   ai: AiBinding,
   models: { primary: string; fallback: string },

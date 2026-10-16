@@ -55,7 +55,7 @@ export function signedOutPage(): string {
     title: "Sign in",
     body: `<section class="fq-card card p-4">
       <h1 class="h3">Sign in through Cloudflare Access</h1>
-      <p>Family Quest uses the same Cloudflare Access application as os.thonbecker.biz. Open <code>quest.thonbecker.biz</code> and sign in there. This page is what you see when Access has not signed the visit.</p>
+      <p>Family Quest has its own Cloudflare Access application for <code>quest.thonbecker.biz</code>. Sign in on that hostname. This page is what you see when Access has not signed the visit.</p>
     </section>`,
   });
 }

@@ -76,7 +76,7 @@ pnpm exec wrangler d1 migrations apply thonbecker-family-quest --local
 pnpm exec wrangler dev
 ```
 
-This does not create a remote database. `wrangler dev` does not inject Access headers, so the local site shows the sign-in page. Production sign-in happens at the edge, on `quest.thonbecker.biz`, after that hostname is on the existing Access application.
+This does not create a remote database. `wrangler dev` does not inject Access headers, so the local site shows the sign-in page until you send `Cf-Access-Jwt-Assertion` and `Cf-Access-Authenticated-User-Email`. Production sign-in happens at the edge, on `quest.thonbecker.biz`, through Family Quest's own Access application. A local session with no `AI` binding uses the built-in stub narrator.
 
 ## Deploy
 
@@ -93,13 +93,18 @@ On a push to `main`:
 
 ### quest.thonbecker.biz and Cloudflare Access
 
-Add `quest.thonbecker.biz` to the existing self-hosted Access application for `os.thonbecker.biz`. This repo does not create Access apps, and Family Quest does not need the team domain or the AUD tag.
+Family Quest has its own self-hosted Access application. It is not the `os.thonbecker.biz` application. This repo does not create Access apps.
+
+- Team domain: `https://withered-dream-fb5a.cloudflareaccess.com`
+- Application audience (AUD): `766e44caeafd6b536cb2e6a182f7e547cdff0b6cc011977936dd74203aab328a`
+- Hostname: `quest.thonbecker.biz`
+- Policy: the same people who may open the family table, for example the Access group or email allow-list already used for the family
 
 The Worker treats a visit as signed in when both `Cf-Access-Jwt-Assertion` and `Cf-Access-Authenticated-User-Email` are present. The nav shows that email. A visit without those headers gets a "Sign in through Cloudflare Access" page (HTTP 401), not an error.
 
-JWT verification is optional. Set both plain vars `ACCESS_TEAM_DOMAIN` (the team origin, `https://<team>.cloudflareaccess.com`) and `ACCESS_AUD` (the application's AUD tag) and the Worker checks the JWT against `<team>/cdn-cgi/access/certs`. Leave them unset if you do not have those values. A failed check shows the sign-in page. Neither var is a secret, and the Deploy workflow does not set them.
+JWT verification is optional. Set both plain vars `ACCESS_TEAM_DOMAIN` to the team domain above and `ACCESS_AUD` to the audience above, and the Worker checks the JWT against `https://withered-dream-fb5a.cloudflareaccess.com/cdn-cgi/access/certs`. Leave them unset to trust the two Access headers. A failed check shows the sign-in page. Neither var is a secret, and the Deploy workflow does not set them.
 
-Wrangler creates the DNS and TLS custom domain on deploy when the `thonbecker.biz` zone is in the same Cloudflare account. The Access hostname stays a dashboard edit on the existing application.
+Wrangler creates the DNS and TLS custom domain on deploy when the `thonbecker.biz` zone is in the same Cloudflare account. The Access application stays a dashboard edit.
 
 ## Tests
 
