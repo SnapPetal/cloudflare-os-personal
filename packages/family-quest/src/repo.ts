@@ -84,7 +84,7 @@ export async function listCampaigns(db: D1Database): Promise<CampaignRecord[]> {
        ORDER BY c.updated_at DESC`,
     )
     .all<CampaignRecord>();
-  return result.results;
+  return result.results ?? [];
 }
 
 export async function getCampaign(db: D1Database, id: string): Promise<CampaignRecord | null> {

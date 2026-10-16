@@ -26,8 +26,8 @@ export function readCap(raw: string | undefined): number {
   }
 }
 
-export function parseCap(raw: string | undefined, fallback = DEFAULT_DAILY_CAP): number {
-  if (raw === undefined || raw.trim() === "") return fallback;
+export function parseCap(raw: string | undefined | null, fallback = DEFAULT_DAILY_CAP): number {
+  if (typeof raw !== "string" || raw.trim() === "") return fallback;
   const cap = Number(raw);
   if (!Number.isInteger(cap) || cap < 0 || cap > 10_000) {
     throw new Error("AI_DAILY_CAP must be a whole number from 0 to 10000.");

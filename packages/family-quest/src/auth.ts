@@ -83,16 +83,22 @@ export async function readAccessUser(
 /**
  * State-changing requests must come from this page. Access cookies are sent on
  * cross-site posts, and this app no longer has a session token to pair with a form.
+ *
+ * The pages send `Referrer-Policy: no-referrer`, so a same-origin form and an htmx
+ * `hx-post` serialize `Origin` as the opaque value `null`. `Sec-Fetch-Site` is a
+ * forbidden header; a cross-site page cannot claim `same-origin`.
  */
 export function sameOrigin(request: Request): boolean {
   const expected = new URL(request.url).origin;
   const origin = request.headers.get("origin");
-  if (!origin) return false;
-  try {
-    return new URL(origin).origin === expected;
-  } catch {
-    return false;
+  if (origin && origin !== "null") {
+    try {
+      return new URL(origin).origin === expected;
+    } catch {
+      return false;
+    }
   }
+  return request.headers.get("sec-fetch-site") === "same-origin";
 }
 
 async function verifyAccessJwt(

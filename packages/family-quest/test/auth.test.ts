@@ -26,6 +26,8 @@ describe("header sign-in", () => {
 
     const page = signedOutPage();
     expect(page).toContain("Sign in through Cloudflare Access");
+    expect(page).toContain("its own Cloudflare Access application");
+    expect(page).not.toContain("os.thonbecker.biz");
 
     const response = await handle(new Request("https://quest.thonbecker.biz/"), {} as Env);
     expect(response.status).toBe(401);
@@ -97,9 +99,24 @@ describe("same-origin posts", () => {
       headers: { origin: "https://evil.example" },
     });
     const bare = new Request("https://quest.thonbecker.biz/quests", { method: "POST" });
+    const opaque = new Request("https://quest.thonbecker.biz/quests", {
+      method: "POST",
+      headers: { origin: "null", "sec-fetch-site": "same-origin" },
+    });
+    const htmx = new Request("https://quest.thonbecker.biz/quests", {
+      method: "POST",
+      headers: { "sec-fetch-site": "same-origin" },
+    });
+    const crossed = new Request("https://quest.thonbecker.biz/quests", {
+      method: "POST",
+      headers: { origin: "null", "sec-fetch-site": "cross-site" },
+    });
     expect(sameOrigin(same)).toBe(true);
     expect(sameOrigin(cross)).toBe(false);
     expect(sameOrigin(bare)).toBe(false);
+    expect(sameOrigin(opaque)).toBe(true);
+    expect(sameOrigin(htmx)).toBe(true);
+    expect(sameOrigin(crossed)).toBe(false);
   });
 });
 

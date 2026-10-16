@@ -1,4 +1,4 @@
-import { embedTexts, narrate, synthesizeSpeech, type AiBinding } from "./ai";
+import { embedTexts, narrate, stubAiBinding, synthesizeSpeech, type AiBinding } from "./ai";
 import {
   bestiaryPrompt,
   challengeCap,
@@ -82,40 +82,41 @@ const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]
 export async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, "") : "/";
-  if (path === "/health" && request.method === "GET") {
+  const method = request.method === "HEAD" ? "GET" : request.method;
+  if (path === "/health" && method === "GET") {
     return text("ok");
   }
   const viewer = await readAccessUser(request, env);
   if (!viewer) return page(signedOutPage(), 401);
 
-  if (path === "/" && request.method === "GET") {
+  if (path === "/" && method === "GET") {
     const campaigns = await listCampaigns(env.DB);
     return page(homePage(campaigns, viewer));
   }
 
-  if (path === "/quests/new" && request.method === "GET") return page(newQuestPage(viewer, null));
-  if (path === "/quests" && request.method === "POST") return openQuest(request, env, viewer);
-  if (path === "/bestiary" && request.method === "GET") return showBestiary(request, env, viewer);
-  if (path === "/bestiary/new" && request.method === "GET") return page(newMonsterPage(viewer, null));
-  if (path === "/bestiary" && request.method === "POST") return createMonster(request, env, viewer);
-  if (path === "/library" && request.method === "GET") return showLibrary(request, env, viewer);
-  if (path === "/library/notes" && request.method === "POST") return saveNote(request, env, viewer);
-  if (path === "/library/index" && request.method === "POST") return indexLibrary(request, env, viewer);
+  if (path === "/quests/new" && method === "GET") return page(newQuestPage(viewer, null));
+  if (path === "/quests" && method === "POST") return openQuest(request, env, viewer);
+  if (path === "/bestiary" && method === "GET") return showBestiary(request, env, viewer);
+  if (path === "/bestiary/new" && method === "GET") return page(newMonsterPage(viewer, null));
+  if (path === "/bestiary" && method === "POST") return createMonster(request, env, viewer);
+  if (path === "/library" && method === "GET") return showLibrary(request, env, viewer);
+  if (path === "/library/notes" && method === "POST") return saveNote(request, env, viewer);
+  if (path === "/library/index" && method === "POST") return indexLibrary(request, env, viewer);
 
   const libraryNote = path.match(/^\/library\/notes\/([0-9a-f-]{36})\/delete$/);
-  if (libraryNote && request.method === "POST") return removeNote(request, env, libraryNote[1] ?? "", viewer);
+  if (libraryNote && method === "POST") return removeNote(request, env, libraryNote[1] ?? "", viewer);
   const bestiaryEdit = path.match(/^\/bestiary\/([a-z0-9-]{1,80})$/);
-  if (bestiaryEdit && request.method === "GET") return showMonster(env, bestiaryEdit[1] ?? "", viewer);
-  if (bestiaryEdit && request.method === "POST") return updateMonster(request, env, bestiaryEdit[1] ?? "", viewer);
+  if (bestiaryEdit && method === "GET") return showMonster(env, bestiaryEdit[1] ?? "", viewer);
+  if (bestiaryEdit && method === "POST") return updateMonster(request, env, bestiaryEdit[1] ?? "", viewer);
   const bestiaryDelete = path.match(/^\/bestiary\/([a-z0-9-]{1,80})\/delete$/);
-  if (bestiaryDelete && request.method === "POST") return removeMonster(request, env, bestiaryDelete[1] ?? "", viewer);
+  if (bestiaryDelete && method === "POST") return removeMonster(request, env, bestiaryDelete[1] ?? "", viewer);
 
   const parts = path.split("/").filter(Boolean);
   if (parts[0] !== "quests" || !parts[1] || !ID.test(parts[1])) return missing(viewer);
   const campaignId = parts[1];
 
-  if (parts.length === 2 && request.method === "GET") return renderQuest(request, env, campaignId, viewer, {});
-  if (request.method !== "POST") return missing(viewer);
+  if (parts.length === 2 && method === "GET") return renderQuest(request, env, campaignId, viewer, {});
+  if (method !== "POST") return missing(viewer);
 
   if (parts[2] === "act") return act(request, env, campaignId, viewer);
   if (parts[2] === "dice") return dice(request, env, campaignId, viewer);
@@ -762,9 +763,11 @@ function models(env: Env): { primary: string; fallback: string } {
 }
 
 function binding(env: Env): AiBinding {
+  const ai = env.AI;
+  if (!ai || typeof ai.run !== "function") return stubAiBinding();
   return {
     run(model: string, input: Record<string, unknown>) {
-      return env.AI.run(model, input);
+      return ai.run(model, input);
     },
   };
 }

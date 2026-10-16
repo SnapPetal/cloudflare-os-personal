@@ -1,5 +1,5 @@
 # Family Quest has no Worker secrets.
-# Sign-in is the existing os.thonbecker.biz Cloudflare Access application.
+# Sign-in is Family Quest's own Cloudflare Access application.
 # Leave these unset unless you want the Worker to verify the Access JWT.
-# ACCESS_TEAM_DOMAIN=https://<team>.cloudflareaccess.com
-# ACCESS_AUD=<application-aud-tag>
+# ACCESS_TEAM_DOMAIN=https://withered-dream-fb5a.cloudflareaccess.com
+# ACCESS_AUD=766e44caeafd6b536cb2e6a182f7e547cdff0b6cc011977936dd74203aab328a

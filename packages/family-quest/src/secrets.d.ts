@@ -15,8 +15,8 @@ interface Env {
    */
   ACCESS_TEAM_DOMAIN?: string;
   /**
-   * Optional AUD tag for the Access application. Not required: quest.thonbecker.biz
-   * is added to the existing os.thonbecker.biz application.
+   * Optional AUD tag for Family Quest's own Access application. JWT verification
+   * runs only when this and `ACCESS_TEAM_DOMAIN` are both set.
    */
   ACCESS_AUD?: string;
 }
