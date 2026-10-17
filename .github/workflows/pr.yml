@@ -33,11 +33,21 @@ jobs:
           node-version: 24.19.0
           cache: pnpm
 
+      - name: Apply personal Cloudflare OS patches
+        run: pnpm apply:patches
+
       - name: Install deployment wrapper dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Install Cloudflare OS dependencies
         run: pnpm --dir cloudflare-os install --frozen-lockfile
+
+      - name: Check generated Worker configs
+        run: pnpm --dir cloudflare-os configs:check
+
+      - name: Check the release manifest golden file
+        working-directory: cloudflare-os
+        run: node --test scripts/release/manifest-lib.test.ts
 
       - name: Lint repository and upstream code
         run: pnpm lint

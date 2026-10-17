@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# Report when the cloudflare-os fork is behind upstream. Prints nothing when it is level, which bb
-# records as a skipped tick, so a quiet week costs nothing.
+# Report when the SnapPetal/cloudflare-os mirror has drifted from upstream. Prints nothing when
+# main matches, which bb records as a skipped tick, so a quiet week costs nothing.
 #
 # Both repositories are public, so this needs no clone, no credentials and no working tree -- which
 # is what lets it run on the bb server. It only answers one question: is upstream/main an ancestor
-# of the fork branch? `pnpm sync:upstream` in cloudflare-os-personal is what acts on the answer.
+# of the fork's main? Personal customizations are patches in cloudflare-os-personal, so a drift
+# here is a mirror problem, not a signal to merge those patches back.
 set -euo pipefail
 
 FORK_OWNER="SnapPetal"
 FORK_REPO="cloudflare-os"
-FORK_BRANCH="personal/admin-ui"
+FORK_BRANCH="main"
 UPSTREAM_REPO="cloudflare/cloudflare-os"
 UPSTREAM_BRANCH="main"
 # The head side of a cross-repository compare is `owner:branch`, never `owner/repo:branch`.
@@ -55,24 +56,26 @@ def decoded(path):
 
 
 data = decoded(status_path)
-# 'ahead' means the fork carries commits upstream does not: this repository's own work, which is
-# the normal state. Only 'behind' and 'diverged' are work waiting to be done.
-if data.get("status") in ("identical", "ahead"):
+status = data.get("status")
+# identical is the only quiet week. ahead, behind, and diverged all mean the mirror is not upstream.
+if status == "identical":
     raise SystemExit(0)
-if data.get("status") not in ("behind", "diverged"):
+if status not in ("ahead", "behind", "diverged"):
     # A rate limit or an outage is not drift. Say so once and stay quiet rather than reporting a
     # green repository as broken.
     print("upstream check could not read the GitHub compare API; treating this week as no change.")
     raise SystemExit(0)
 
-listed = decoded(details_path).get("commits", [])
-print(f"{branch} is {data['behind_by']} commit(s) behind {upstream_repo} {upstream_branch} "
-      f"({data['status']}).")
+details = decoded(details_path).get("commits", [])
+listed = details or data.get("commits", [])
+print(f"{branch} is {data.get('ahead_by', 0)} commit(s) ahead and "
+      f"{data.get('behind_by', 0)} behind {upstream_repo} {upstream_branch} ({status}).")
 for commit in listed[:15]:
     print(f"  {commit['sha'][:9]} {commit['commit']['message'].splitlines()[0]}")
 if len(listed) > 15:
     print(f"  ... and {len(listed) - 15} more")
-print("Then, in cloudflare-os-personal:  pnpm sync:upstream --merge --verify")
+print("Personal changes live in cloudflare-os-personal as patches, not on this fork.")
+print("Bump the pin from that repo (README, Bump the upstream pin). Do not merge patches back onto the fork.")
 PY
 }
 
@@ -82,7 +85,7 @@ PY
 api "$UPSTREAM_REPO" "$UPSTREAM_BRANCH...$FORK_HEAD" > "$workdir/status.json"
 : > "$workdir/details.json"
 case "$(classify "$workdir/status.json")" in
-  behind|diverged)
+  behind|diverged|ahead)
     api "$UPSTREAM_REPO" "$FORK_HEAD...$UPSTREAM_BRANCH" > "$workdir/details.json"
     ;;
 esac

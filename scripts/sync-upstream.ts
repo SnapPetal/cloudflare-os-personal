@@ -5,20 +5,18 @@ import { dirname, join, resolve } from "node:path";
 import { pnpmCommand } from "../cloudflare-os/scripts/pnpm-command.ts";
 
 /**
- * Move the `cloudflare-os` pin forward, in the order that keeps the failure loud.
+ * Report how the pinned `cloudflare-os` commit compares to upstream main.
  *
- * The pin is a commit, not a branch, and this script exists so keeping it current is a command
- * rather than a project. It never pushes the fork, never touches the parent's gitlink, and never
- * deploys: those are three separate decisions, and the last one is production.
+ * The pin is an upstream commit. Personal changes are patches under `patches/cloudflare-os/`,
+ * applied by `pnpm apply:patches`. This script never commits inside the submodule, never pushes,
+ * and never deploys.
  *
  *   node scripts/sync-upstream.ts            fetch, report, and check the mirrored catalog
- *   node scripts/sync-upstream.ts --merge    also merge upstream/main into the fork branch
- *   node scripts/sync-upstream.ts --verify   also install, lint, dry-run, and run the suites
- *   node scripts/sync-upstream.ts --merge --verify    all of it, locally
+ *   node scripts/sync-upstream.ts --verify   also apply patches, install, lint, dry-run, and test
  *
- * Exit codes: 0 in sync, 1 something failed, 2 the mirrored catalog has drifted, 3 the fork is
- * behind upstream/main and `--merge` was not passed. 3 is not an error -- it is how a caller tells
- * "nothing to do" from "work to do".
+ * Exit codes: 0 the pin is upstream/main and the catalog matches, 1 a step failed or the pin is
+ * not an upstream commit, 2 the mirrored catalog has drifted, 3 the pin is behind upstream/main.
+ * 3 is not an error -- it is how a caller tells "nothing to do" from "work to do".
  */
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -53,9 +51,9 @@ export interface CatalogDrift {
 }
 
 export interface Divergence {
-  /** Commits in the upstream ref that the fork branch does not have. */
+  /** Commits on upstream that the checked-out pin does not have. */
   behind: number;
-  /** Commits on the fork branch that the upstream ref does not have: this repository's own work. */
+  /** Commits on the pin that upstream does not have. This stays 0 for an unmodified upstream pin. */
   ahead: number;
 }
 
@@ -166,18 +164,16 @@ function gitOutput(args: string[], cwd = root): string {
   return result.stdout.trim();
 }
 
-export interface ForkState {
-  branch: string;
+export interface PinState {
+  /** `upstream` when that remote exists, otherwise `origin`. */
+  remote: string;
   upstreamRef: string;
-  divergence: Divergence;
-  /** The fork branch tip. */
-  forkTip: string;
-  /** The commit this repository's gitlink records. */
+  upstreamTip: string;
+  /** The commit checked out in cloudflare-os. Patches do not move it. */
+  checkedOut: string;
+  /** The commit this repository's gitlink records at parent HEAD. */
   pinned: string;
-  /** Whether the pinned commit is on the fork branch's history at all. */
-  pinOnBranch: boolean;
-  /** Whether the fork branch has commits `origin` has not seen. */
-  unpushed: number;
+  divergence: Divergence;
 }
 
 function hasRemote(name: string): boolean {
@@ -185,38 +181,38 @@ function hasRemote(name: string): boolean {
     .includes(name);
 }
 
-export function readForkState(branch?: string): ForkState {
-  const head = gitOutput(["rev-parse", "--abbrev-ref", "HEAD"], submoduleDir);
-  const resolved = branch ?? head;
-  if (head === "HEAD") {
-    throw new Error(
-      "The submodule is on a detached HEAD, so there is no branch to merge into. Check out the " +
-      "fork branch first, or pass --branch <name>.");
+function upstreamRemote(): string {
+  if (hasRemote("upstream")) return "upstream";
+  if (hasRemote("origin")) return "origin";
+  throw new Error(
+    "cloudflare-os has no upstream or origin remote. The submodule URL should be " +
+    "https://github.com/cloudflare/cloudflare-os.git.");
+}
+
+function fetchUpstream(remote: string): void {
+  const result = git(["fetch", "--quiet", remote, "main"], submoduleDir);
+  if (result.status !== 0) {
+    throw new Error(`git fetch ${remote} main failed: ${result.stderr.trim() || result.stdout.trim()}`);
   }
-  if (!hasRemote("upstream")) {
-    throw new Error(
-      "The submodule has no `upstream` remote, so there is nothing to compare against. Add it: " +
-      "git -C cloudflare-os remote add upstream https://github.com/cloudflare/cloudflare-os.git");
-  }
-  // `upstream/HEAD` is the upstream default branch, whatever it is called this month.
-  const upstreamRef = gitOutput(["symbolic-ref", "--short", "refs/remotes/upstream/HEAD"], submoduleDir);
-  const [behind, ahead] = gitOutput(
-    ["rev-list", "--left-right", "--count", `${upstreamRef}...${resolved}`], submoduleDir,
-  ).split(/\s+/);
+}
+
+export function readPinState(): PinState {
+  const remote = upstreamRemote();
+  const upstreamRef = `${remote}/main`;
+  const checkedOut = gitOutput(["rev-parse", "HEAD"], submoduleDir);
   const pinMatch = /^160000 commit ([0-9a-f]{40})\tcloudflare-os$/m.exec(
     gitOutput(["ls-tree", "HEAD", "cloudflare-os"]),
   );
+  const [behind, ahead] = gitOutput(
+    ["rev-list", "--left-right", "--count", `${upstreamRef}...${checkedOut}`], submoduleDir,
+  ).split(/\s+/);
   return {
-    branch: resolved,
+    remote,
     upstreamRef,
-    divergence: parseDivergence(`${behind} ${ahead}`),
-    forkTip: gitOutput(["rev-parse", resolved], submoduleDir),
+    upstreamTip: gitOutput(["rev-parse", upstreamRef], submoduleDir),
+    checkedOut,
     pinned: pinMatch?.[1] ?? "unknown",
-    pinOnBranch: git(["merge-base", "--is-ancestor", pinMatch?.[1] ?? "", resolved], submoduleDir)
-      .status === 0,
-    unpushed: Number(gitOutput(
-      ["rev-list", "--count", `origin/${resolved}..${resolved}`], submoduleDir,
-    )),
+    divergence: parseDivergence(`${behind} ${ahead}`),
   };
 }
 
@@ -247,7 +243,8 @@ function runPnpm(args: string[], label: string, capture = false): number {
 }
 
 /**
- * Install both workspaces, then run everything that has to pass before a pin is worth committing.
+ * Apply the personal patches, install both workspaces, then run everything that has to pass
+ * before a new pin is worth committing.
  *
  * The per-package suites pipe their output so a package with no `test` task can be told apart from a
  * package whose tests failed: `Task "test" not found` is a fact about the package, not a broken
@@ -259,8 +256,22 @@ function verify(): string[] {
     console.log(`\n=== ${label}`);
     if (runPnpm(args, label) !== 0) failures.push(label);
   };
+  console.log("\n=== apply patches");
+  const apply = spawnSync("bash", ["scripts/apply-cloudflare-os-patches.sh"], {
+    cwd: root, env: process.env, stdio: "inherit",
+  });
+  if ((apply.status ?? 1) !== 0) failures.push("apply patches");
   step("pnpm install (this workspace)", ["install"]);
   step("pnpm install (submodule)", ["--dir", "cloudflare-os", "install"]);
+  step("generated worker configs", ["--dir", "cloudflare-os", "configs:check"]);
+  console.log("\n=== golden release manifest");
+  const golden = spawnSync(process.execPath, ["--test", "scripts/release/manifest-lib.test.ts"], {
+    cwd: submoduleDir, env: process.env, stdio: "inherit",
+  });
+  if ((golden.status ?? 1) !== 0) {
+    console.error("\n[failed] golden release manifest");
+    failures.push("golden release manifest");
+  }
   step("pnpm lint", ["lint"]);
   step("pnpm check", ["check"]);
   for (const pkg of verifyPackages) {
@@ -282,36 +293,6 @@ function verify(): string[] {
     failures.push(`${pkg} tests`);
   }
   return failures;
-}
-
-/**
- * What a human merge of `upstream/main` has to preserve. Upstream and this fork both edit
- * `server.ts`, the router, and the admin page, so these are the conflicts that matter -- a merge
- * that drops one of them still builds, and still passes the suites, and quietly removes a feature.
- */
-const preserveAfterMerge = [
-  "grep -rn 'handleVectorStoreRequest\\|handleBookingAdminRequest\\|isSamePublicOrigin' cloudflare-os/packages/workshop-backend/src",
-  "grep -n 'vector-store' cloudflare-os/packages/router/wrangler.jsonc cloudflare-os/packages/router/src/index.ts",
-  "grep -rn 'VectorStoreAdminPanel\\|BookingAdminPanel' cloudflare-os/packages/workshop-frontend/src",
-];
-
-function mergeUpstream(state: ForkState): boolean {
-  console.log(`\n=== git -C cloudflare-os merge ${state.upstreamRef}`);
-  const result = git(["merge", "--no-edit", state.upstreamRef], submoduleDir);
-  if (result.status === 0) {
-    console.log(result.stdout.trim());
-    console.log("\nConfirm this repository's own work survived the merge:");
-    for (const command of preserveAfterMerge) console.log(`  ${command}`);
-    return true;
-  }
-  console.error(
-    `\nMerge stopped on conflicts. Resolve them inside cloudflare-os/ -- keeping both sides -- then:\n` +
-    `  git -C cloudflare-os add -A && git -C cloudflare-os commit\n` +
-    `Or start over with:\n  git -C cloudflare-os merge --abort\n\n` +
-    `What the merge must not lose:\n` +
-    preserveAfterMerge.map((command) => `  ${command}`).join("\n"),
-  );
-  return false;
 }
 
 async function reportCatalogDrift(): Promise<number> {
@@ -339,43 +320,49 @@ async function reportCatalogDrift(): Promise<number> {
 
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
-  const known = new Set(["--merge", "--verify", "--branch"]);
-  const unknown = argv.filter((arg, index) =>
-    !known.has(arg) && !(arg.startsWith("--branch=") || (known.has("--branch") && index > 0 &&
-      !argv[index - 1].startsWith("-"))));
+  if (argv.some((arg) => arg === "--merge" || arg === "--branch" || arg.startsWith("--branch="))) {
+    throw new Error(
+      "--merge and --branch are gone. Personal changes are patches in patches/cloudflare-os/, " +
+      "not commits on SnapPetal/cloudflare-os. See README, \"Bump the upstream pin\".");
+  }
+  const unknown = argv.filter((arg) => arg !== "--verify");
   if (unknown.length) {
     throw new Error(`Unknown argument(s): ${unknown.join(" ")}. See the header of this file.`);
   }
-  const branchIndex = argv.indexOf("--branch");
-  const branch = branchIndex === -1
-    ? argv.find((arg) => arg.startsWith("--branch="))?.slice("--branch=".length)
-    : argv[branchIndex + 1];
-  const merge = argv.includes("--merge");
   const verifyToo = argv.includes("--verify");
 
-  console.log("=== fetching upstream and origin");
-  for (const remote of ["upstream", "origin"]) {
-    if (hasRemote(remote)) {
-      const result = git(["fetch", "--quiet", remote], submoduleDir);
-      if (result.status !== 0) throw new Error(`git fetch ${remote} failed: ${result.stderr.trim()}`);
-    }
-  }
+  const remote = upstreamRemote();
+  console.log(`=== fetching ${remote} main`);
+  fetchUpstream(remote);
 
-  const state = readForkState(branch);
+  const state = readPinState();
   const { behind, ahead } = state.divergence;
-  console.log(`\nfork branch:  ${state.branch} @ ${state.forkTip.slice(0, 9)}`);
-  console.log(`upstream:     ${state.upstreamRef}`);
-  console.log(`divergence:   ${behind} behind, ${ahead} ahead (the ahead commits are this fork's own)`);
-  console.log(`parent pin:   ${state.pinned.slice(0, 9)}${state.pinOnBranch ? "" : "  NOT on the branch"}`);
-  console.log(`unpushed:     ${state.unpushed} commit(s) on ${state.branch}`);
+  console.log(`\nsubmodule HEAD: ${state.checkedOut}`);
+  console.log(`parent gitlink: ${state.pinned}`);
+  console.log(`upstream:       ${state.upstreamTip} (${state.upstreamRef})`);
+  console.log(`divergence:     ${behind} behind, ${ahead} ahead`);
+  if (state.pinned !== "unknown" && state.checkedOut !== state.pinned) {
+    console.log(
+      "\nThe checked-out commit and the parent HEAD gitlink differ. Commit the gitlink if this " +
+      "move is intentional. Patches do not change the gitlink.");
+  }
+  if (ahead > 0) {
+    console.error(
+      "\nThe pin contains commits that are not on upstream/main. This deployment tracks " +
+      "unmodified upstream. Move the gitlink back onto upstream/main and keep personal work in " +
+      "patches/cloudflare-os/.");
+    return 1;
+  }
 
   const driftCode = await reportCatalogDrift();
   if (driftCode !== 0) return driftCode;
 
-  if (merge && behind > 0) {
-    if (!mergeUpstream(state)) return 1;
-  } else if (behind > 0) {
-    console.log(`\n${behind} upstream commit(s) to merge. Re-run with --merge to do it locally.`);
+  if (behind > 0) {
+    console.log(
+      `\n${behind} upstream commit(s) since the pin. See README, "Bump the upstream pin". ` +
+      "This command does not move the pin.");
+  } else {
+    console.log("\npin is upstream/main.");
   }
 
   if (verifyToo) {
@@ -388,13 +375,12 @@ async function main(): Promise<number> {
   }
 
   console.log(
-    `\nNext steps, in order -- each is a separate decision:\n` +
-    `  1. commit the pin, if it moved:  git add cloudflare-os pnpm-workspace.yaml pnpm-lock.yaml\n` +
-    `  2. push this repository:         git push origin main\n` +
-    `  3. push the fork, if it moved:   git -C cloudflare-os push origin ${state.branch}\n` +
-    `  4. deploy:                       pnpm deploy   (production; Router deploys last)`,
+    "\nNext steps, in order -- each is a separate decision:\n" +
+    "  1. if the pin should move, follow README \"Bump the upstream pin\"\n" +
+    "  2. commit the gitlink and any refreshed patch in this repository\n" +
+    "  3. deploy: pnpm deploy   (production; Router deploys last)",
   );
-  return behind > 0 && !merge ? 3 : 0;
+  return behind > 0 ? 3 : 0;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

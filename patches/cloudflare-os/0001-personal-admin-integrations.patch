@@ -1,0 +1,472 @@
+diff --git a/packages/router/__tests__/router.test.ts b/packages/router/__tests__/router.test.ts
+index e530ad4..88ec7a0 100644
+--- a/packages/router/__tests__/router.test.ts
++++ b/packages/router/__tests__/router.test.ts
+@@ -24,10 +24,12 @@ async function route(env: Env, path: string): Promise<string> {
+ }
+ 
+ describe('router fetch', () => {
+-  it('routes /api and /blueprint-screenshot prefixes to the backend', async () => {
++  it('routes backend API prefixes to the backend', async () => {
+     const env = makeEnv({ ASSETS: stubFetcher('assets') });
+     expect(await route(env, '/api')).toBe('backend');
+     expect(await route(env, '/api/workshop')).toBe('backend');
++    expect(await route(env, '/vector-store')).toBe('backend');
++    expect(await route(env, '/vector-store/api/buckets')).toBe('backend');
+     expect(await route(env, '/blueprint-screenshot')).toBe('backend');
+     expect(await route(env, '/blueprint-screenshot/abc')).toBe('backend');
+   });
+@@ -110,10 +112,12 @@ describe('router email', () => {
+ describe('wrangler.jsonc contract', () => {
+   const config = parse(wranglerConfigText);
+ 
+-  it('runs the worker first for API, screenshot, and gatekeeper prefixes', () => {
++  it('runs the worker first for API, vector, screenshot, and gatekeeper prefixes', () => {
+     const first: string[] = config.assets.run_worker_first;
+     expect(first).toContain('/api');
+     expect(first).toContain('/api/*');
++    expect(first).toContain('/vector-store');
++    expect(first).toContain('/vector-store/*');
+     expect(first).toContain('/blueprint-screenshot');
+     expect(first).toContain('/blueprint-screenshot/*');
+     expect(first).toContain('/gatekeeper/*');
+diff --git a/packages/router/cloudflare.config.ts b/packages/router/cloudflare.config.ts
+index f206acf..341c5df 100644
+--- a/packages/router/cloudflare.config.ts
++++ b/packages/router/cloudflare.config.ts
+@@ -7,13 +7,16 @@ export default defineGadgetsWorker({
+   entrypoint: "src/index.ts",
+ 
+   // The router owns the public origin for customer instances, so it serves the frontend.
+-  // `runWorkerFirst` keeps API and gatekeeper prefixes on the worker; everything else falls
+-  // through to static assets with SPA fallback.
++  // `runWorkerFirst` keeps API, vector-store, and gatekeeper prefixes on the worker; everything
++  // else falls through to static assets with SPA fallback. `/vector-store` is the private
++  // vector explorer, proxied by the workshop backend.
+   assets: {
+     notFoundHandling: "single-page-application",
+     runWorkerFirst: [
+       "/api",
+       "/api/*",
++      "/vector-store",
++      "/vector-store/*",
+       "/blueprint-screenshot",
+       "/blueprint-screenshot/*",
+       "/gatekeeper/*",
+diff --git a/packages/router/src/index.ts b/packages/router/src/index.ts
+index 9a80894..5dca7c6 100644
+--- a/packages/router/src/index.ts
++++ b/packages/router/src/index.ts
+@@ -35,6 +35,7 @@ export default {
+     }
+ 
+     if (url.pathname === "/api" || url.pathname.startsWith("/api/") ||
++        url.pathname === "/vector-store" || url.pathname.startsWith("/vector-store/") ||
+         url.pathname === "/blueprint-screenshot" ||
+         url.pathname.startsWith("/blueprint-screenshot/")) {
+       return env.WORKSHOP_BACKEND.fetch(req);
+diff --git a/packages/router/wrangler.jsonc b/packages/router/wrangler.jsonc
+index 4b67902..585fee4 100644
+--- a/packages/router/wrangler.jsonc
++++ b/packages/router/wrangler.jsonc
+@@ -23,6 +23,8 @@
+     "run_worker_first": [
+       "/api",
+       "/api/*",
++      "/vector-store",
++      "/vector-store/*",
+       "/blueprint-screenshot",
+       "/blueprint-screenshot/*",
+       "/gatekeeper/*"
+diff --git a/packages/workshop-backend/src/booking-admin-proxy.ts b/packages/workshop-backend/src/booking-admin-proxy.ts
+new file mode 100644
+index 0000000..8cfacf4
+--- /dev/null
++++ b/packages/workshop-backend/src/booking-admin-proxy.ts
+@@ -0,0 +1,31 @@
++import { isSamePublicOrigin, isVerifiedDeploymentAdmin, type DeploymentAdminEnv } from "./deployment-admin.js";
++
++type BookingAdminEnv = DeploymentAdminEnv & { BOOKING_ADMIN_BASE_URL?: string };
++
++async function forward(req: Request, env: BookingAdminEnv, path: string, accessAssertion: string): Promise<Response> {
++  if (!env.BOOKING_ADMIN_BASE_URL) return new Response("Booking administration is not configured.", { status: 503 });
++  let target = new URL(path, `${env.BOOKING_ADMIN_BASE_URL.replace(/\/$/, "")}/`);
++  let headers = new Headers(req.headers);
++  headers.set("Authorization", `Bearer ${accessAssertion}`);
++  headers.delete("Host");
++  headers.delete("Cookie");
++  let upstream = await fetch(target, {
++    method: req.method,
++    headers,
++    body: req.method === "GET" || req.method === "HEAD" ? undefined : req.body,
++  });
++  return new Response(upstream.body, upstream);
++}
++
++export async function handleBookingAdminRequest(
++  req: Request, env: BookingAdminEnv, url: URL): Promise<Response> {
++  if (!env.CF_ACCESS_AUD || !isSamePublicOrigin(req, url, env)) {
++    return new Response("Booking administration requires Cloudflare Access.", { status: 403 });
++  }
++  let accessAssertion = req.headers.get("cf-access-jwt-assertion");
++  if (!accessAssertion || !await isVerifiedDeploymentAdmin(req, env)) {
++    return new Response("Booking administration is restricted to deployment administrators.", { status: 403 });
++  }
++  let bookingPath = url.pathname.slice("/api/booking-admin".length) || "/";
++  return forward(req, env, `/booking/admin/api${bookingPath}${url.search}`, accessAssertion);
++}
+diff --git a/packages/workshop-backend/src/deployment-admin.ts b/packages/workshop-backend/src/deployment-admin.ts
+new file mode 100644
+index 0000000..653f351
+--- /dev/null
++++ b/packages/workshop-backend/src/deployment-admin.ts
+@@ -0,0 +1,27 @@
++import { verifyCfAccessJwt, type CfAccessEnv } from "./access.js";
++
++export type DeploymentAdminEnv = CfAccessEnv & {
++  ADMINS?: string[] | string;
++  /** Public router origin; service bindings otherwise rewrite request URLs to an internal origin. */
++  PUBLIC_BASE_URL?: string;
++};
++
++export function isSamePublicOrigin(request: Request, url: URL, env: DeploymentAdminEnv): boolean {
++  const origin = request.headers.get("Origin");
++  return !origin || origin === (env.PUBLIC_BASE_URL || url.origin);
++}
++
++export function isDeploymentAdmin(email: string, env: DeploymentAdminEnv): boolean {
++  let admins = env.ADMINS;
++  if (!admins) return false;
++  if (typeof admins === "string") {
++    try { admins = JSON.parse(admins) as string[]; } catch { return false; }
++  }
++  return Array.isArray(admins) && admins.includes(email);
++}
++
++export async function isVerifiedDeploymentAdmin(
++    request: Request, env: DeploymentAdminEnv): Promise<boolean> {
++  const payload = await verifyCfAccessJwt(request, env);
++  return typeof payload?.email === "string" && isDeploymentAdmin(payload.email, env);
++}
+diff --git a/packages/workshop-backend/src/env.d.ts b/packages/workshop-backend/src/env.d.ts
+index ed6191d..6783feb 100644
+--- a/packages/workshop-backend/src/env.d.ts
++++ b/packages/workshop-backend/src/env.d.ts
+@@ -58,6 +58,13 @@ declare global {
+       // weakening it to optional in a merged augmentation. Self-hosted deployments may omit the
+       // binding, so use sites read it as `BrowserRun | undefined` and null-check.
+ 
++      // Private vector-store explorer mounted through the Access-protected Workshop admin UI.
++      S3V_EXPLORER?: Fetcher;
++
++      // Server-side bridge to the Spring booking service. Access JWTs are forwarded; no booking
++      // password is stored in Cloudflare.
++      BOOKING_ADMIN_BASE_URL?: string;
++
+       // ---------------------------------------------------------------------------------------------
+       // Optional features: sign-in via authentication gatekeepers + AI Gateway billing (free-tier
+       // limits / top-up). All OFF by default; existing password / Cloudflare Access deployments are
+diff --git a/packages/workshop-backend/src/server.ts b/packages/workshop-backend/src/server.ts
+index 972feda..11d0b2b 100644
+--- a/packages/workshop-backend/src/server.ts
++++ b/packages/workshop-backend/src/server.ts
+@@ -27,7 +27,10 @@ import { ExternalMessageGateway } from "./external-message-gateway";
+ import { RpcStub as NativeRpcStub } from "cloudflare:workers";
+ import { recordAnalytics } from "./analytics";
+ import { handleClientErrorRequest } from "./client-errors.js";
++import { isSamePublicOrigin } from "./deployment-admin.js";
+ import { verifyCfAccessJwt } from "./access.js";
++import { handleBookingAdminRequest } from "./booking-admin-proxy.js";
++import { handleVectorStoreRequest } from "./vector-store-proxy.js";
+ import { resolveUiFeatureFlags } from "./feature-flags";
+ import { serveSiteLogo, SITE_LOGO_PATH } from "./site-logo.js";
+ import { createWorkshopLogger } from "./observability";
+@@ -930,6 +933,14 @@ export default {
+       }, expectedUserDoId);
+     }
+ 
++    if (url.pathname === "/vector-store" || url.pathname.startsWith("/vector-store/")) {
++      return handleVectorStoreRequest(req, env, url);
++    }
++
++    if (url.pathname.startsWith("/api/booking-admin/")) {
++      return handleBookingAdminRequest(req, env, url);
++    }
++
+     if (url.pathname === "/api") {
+       // Make sure the bundled blueprints are installed. The AdminSettings DO doesn't wake
+       // merely because someone deployed, so the install needs a trigger; hanging it off API
+@@ -957,7 +968,7 @@ export default {
+       let accessSession: { payload: JWTPayload; jwt: string } | undefined;
+ 
+       if (env.CF_ACCESS_AUD) {
+-        if (req.headers.get("Origin") !== url.origin) {
++        if (!isSamePublicOrigin(req, url, env)) {
+           return new Response("Cross-origin API access not allowed.", { status: 403 });
+         }
+ 
+diff --git a/packages/workshop-backend/src/vector-store-proxy.ts b/packages/workshop-backend/src/vector-store-proxy.ts
+new file mode 100644
+index 0000000..dd0f0cb
+--- /dev/null
++++ b/packages/workshop-backend/src/vector-store-proxy.ts
+@@ -0,0 +1,16 @@
++import { isSamePublicOrigin, isVerifiedDeploymentAdmin, type DeploymentAdminEnv } from "./deployment-admin.js";
++
++type VectorStoreAdminEnv = DeploymentAdminEnv & { S3V_EXPLORER?: Fetcher };
++
++export async function handleVectorStoreRequest(req: Request, env: VectorStoreAdminEnv, url: URL): Promise<Response> {
++  if (!env.CF_ACCESS_AUD || !isSamePublicOrigin(req, url, env)) {
++    return new Response("Vector administration requires Cloudflare Access.", { status: 403 });
++  }
++  if (!await isVerifiedDeploymentAdmin(req, env)) {
++    return new Response("Vector administration is restricted to deployment administrators.", { status: 403 });
++  }
++  if (!env.S3V_EXPLORER) return new Response("Vector store is not configured.", { status: 503 });
++  let downstreamUrl = new URL(req.url);
++  downstreamUrl.pathname = url.pathname.slice("/vector-store".length) || "/";
++  return env.S3V_EXPLORER.fetch(new Request(downstreamUrl, req));
++}
+diff --git a/packages/workshop-frontend/src/AdminPage.tsx b/packages/workshop-frontend/src/AdminPage.tsx
+index 07abee6..9636bc4 100644
+--- a/packages/workshop-frontend/src/AdminPage.tsx
++++ b/packages/workshop-frontend/src/AdminPage.tsx
+@@ -10,6 +10,8 @@ import SiteLogo from './components/SiteLogo'
+ import { useDocumentTitle } from './useDocumentTitle'
+ import AdminFormatsPanel from './components/format/AdminFormatsPanel'
+ import { AdminModelsPanel } from './features/ai-models/AdminModelsPanel'
++import BookingAdminPanel from './components/BookingAdminPanel'
++import VectorStoreAdminPanel from './components/VectorStoreAdminPanel'
+ 
+ // Preset accent colors offered in the Theme section ('' = default brand).
+ const ACCENT_PRESETS: { label: string; value: string }[] = [
+@@ -430,6 +432,8 @@ export default function AdminPage() {
+         onValueChange={setActiveTab}
+         tabs={[
+           { value: 'general', label: 'General' },
++          { value: 'booking', label: 'Booking Operations' },
++          { value: 'vectors', label: 'Skatetricks Knowledge' },
+           { value: 'gatekeepers', label: 'Gatekeepers' },
+           { value: 'formats', label: 'Formats' },
+           { value: 'models', label: 'Models' },
+@@ -459,6 +463,12 @@ export default function AdminPage() {
+         />
+       )}
+ 
++      {/* Booking Operations */}
++      {activeTab === 'booking' && <BookingAdminPanel />}
++
++      {/* Vector Store */}
++      {activeTab === 'vectors' && <VectorStoreAdminPanel />}
++
+       {/* Sign-ups and user search */}
+       {activeTab === 'access' && (
+         <>
+diff --git a/packages/workshop-frontend/src/components/BookingAdminPanel.tsx b/packages/workshop-frontend/src/components/BookingAdminPanel.tsx
+new file mode 100644
+index 0000000..5ca6858
+--- /dev/null
++++ b/packages/workshop-frontend/src/components/BookingAdminPanel.tsx
+@@ -0,0 +1,55 @@
++import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
++import { CalendarCheck, Clock, Tag, Trash, XCircle } from '@phosphor-icons/react'
++import { useKumoToastManager } from '@cloudflare/kumo'
++
++type BookingType = { id: number; name: string; description: string; durationMinutes: number; bufferMinutes: number; active: boolean; color: string }
++type Booking = { id: number; confirmationCode: string; bookingType: BookingType; attendeeName: string; attendeeEmail: string; attendeePhone: string | null; startTime: string; endTime: string; message: string | null; status: string }
++type Slot = { id: number; startTime: string; endTime: string; available: boolean }
++type Snapshot = { bookingTypes: BookingType[]; bookings: Booking[]; availabilitySlots: Slot[] }
++
++const API = '/api/booking-admin'
++const date = (value: string) => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
++const statusColor = (status: string) => status === 'CONFIRMED' ? 'text-kumo-success' : status === 'CANCELLED' ? 'text-kumo-danger' : 'text-kumo-subtle'
++
++export default function BookingAdminPanel() {
++  const toasts = useKumoToastManager()
++  const toastsRef = useRef(toasts)
++  const [data, setData] = useState<Snapshot | null>(null)
++  const [loading, setLoading] = useState(true)
++  const [busy, setBusy] = useState<string | null>(null)
++  const [start, setStart] = useState('')
++  const [end, setEnd] = useState('')
++  const load = useCallback(async () => {
++    setLoading(true)
++    try { const response = await fetch(`${API}/snapshot`); if (!response.ok) throw new Error(`Booking service returned ${response.status}`); setData(await response.json() as Snapshot) }
++    catch (error) { toastsRef.current.add({ title: error instanceof Error ? error.message : 'Failed to load bookings', variant: 'error' }) }
++    finally { setLoading(false) }
++  }, [])
++  useEffect(() => { void load() }, [load])
++  const mutate = async (key: string, request: () => Promise<Response>, success: string) => {
++    setBusy(key)
++    try { const response = await request(); if (!response.ok) throw new Error(`Booking service returned ${response.status}`); await load(); toastsRef.current.add({ title: success, variant: 'success' }) }
++    catch (error) { toastsRef.current.add({ title: error instanceof Error ? error.message : 'Booking update failed', variant: 'error' }) }
++    finally { setBusy(null) }
++  }
++  const cancel = (id: number) => { if (window.confirm('Cancel this booking?')) void mutate(`cancel-${id}`, () => fetch(`${API}/bookings/${id}/cancel`, { method: 'POST' }), 'Booking cancelled') }
++  const addSlot = async (event: FormEvent) => { event.preventDefault(); await mutate('add-slot', () => fetch(`${API}/availability`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ startTime: start, endTime: end }) }), 'Availability added'); setStart(''); setEnd('') }
++  const removeSlot = (id: number) => { if (window.confirm('Delete this availability slot?')) void mutate(`delete-slot-${id}`, () => fetch(`${API}/availability/${id}`, { method: 'DELETE' }), 'Availability deleted') }
++  if (loading && !data) return <p className="text-sm text-kumo-subtle">Loading booking operations...</p>
++  if (!data) return <button className="text-sm text-kumo-brand underline" onClick={() => void load()}>Try again</button>
++  return <div className="space-y-6">
++    <div><h2 className="text-lg font-semibold text-kumo-strong">Booking Operations</h2><p className="text-sm text-kumo-subtle mt-1">Manage bookings and availability from the private Cloudflare OS control plane.</p></div>
++    <section className="bg-kumo-elevated border border-kumo-line rounded-xl overflow-hidden">
++      <div className="flex items-center gap-3 px-5 py-4 border-b border-kumo-line"><CalendarCheck size={20} className="text-kumo-subtle" /><h3 className="font-medium text-kumo-strong">Bookings ({data.bookings.length})</h3></div>
++      <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-left text-kumo-subtle border-b border-kumo-line"><tr><th className="px-5 py-3">Attendee</th><th className="px-5 py-3">Meeting</th><th className="px-5 py-3">When</th><th className="px-5 py-3">Status</th><th /></tr></thead><tbody>
++        {data.bookings.map((booking) => <tr key={booking.id} className="border-b border-kumo-line last:border-0"><td className="px-5 py-3"><div className="text-kumo-strong">{booking.attendeeName}</div><div className="text-xs text-kumo-subtle">{booking.attendeeEmail}</div></td><td className="px-5 py-3 text-kumo-default">{booking.bookingType.name}<div className="text-xs text-kumo-subtle">{booking.confirmationCode}</div></td><td className="px-5 py-3 text-kumo-default">{date(booking.startTime)}</td><td className={`px-5 py-3 font-medium ${statusColor(booking.status)}`}>{booking.status}</td><td className="px-5 py-3 text-right">{booking.status === 'CONFIRMED' && <button className="inline-flex items-center gap-1 text-kumo-danger hover:underline disabled:opacity-50" disabled={busy === `cancel-${booking.id}`} onClick={() => cancel(booking.id)}><XCircle size={15} />Cancel</button>}</td></tr>)}
++        {!data.bookings.length && <tr><td colSpan={5} className="px-5 py-8 text-center text-kumo-subtle">No bookings yet</td></tr>}
++      </tbody></table></div>
++    </section>
++    <div className="grid gap-6 lg:grid-cols-2">
++      <section className="bg-kumo-elevated border border-kumo-line rounded-xl p-5"><div className="flex items-center gap-3 mb-4"><Clock size={20} className="text-kumo-subtle" /><h3 className="font-medium text-kumo-strong">Add Availability</h3></div><form className="space-y-3" onSubmit={addSlot}><label className="block text-sm text-kumo-default">Start<input required type="datetime-local" value={start} onChange={(event) => setStart(event.target.value)} className="mt-1 w-full rounded-lg border border-kumo-line bg-kumo-base px-3 py-2 text-sm" /></label><label className="block text-sm text-kumo-default">End<input required type="datetime-local" value={end} onChange={(event) => setEnd(event.target.value)} className="mt-1 w-full rounded-lg border border-kumo-line bg-kumo-base px-3 py-2 text-sm" /></label><button type="submit" disabled={busy === 'add-slot'} className="rounded-lg bg-kumo-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Add slot</button></form></section>
++      <section className="bg-kumo-elevated border border-kumo-line rounded-xl p-5"><div className="flex items-center gap-3 mb-4"><Clock size={20} className="text-kumo-subtle" /><h3 className="font-medium text-kumo-strong">Availability ({data.availabilitySlots.length})</h3></div><div className="space-y-2 max-h-80 overflow-y-auto">{data.availabilitySlots.map((slot) => <div key={slot.id} className="flex items-center justify-between gap-3 rounded-lg border border-kumo-line px-3 py-2"><div className="text-sm text-kumo-default">{date(slot.startTime)}<div className="text-xs text-kumo-subtle">to {date(slot.endTime)}</div></div><button aria-label="Delete availability" className="text-kumo-danger disabled:opacity-50" disabled={busy === `delete-slot-${slot.id}`} onClick={() => removeSlot(slot.id)}><Trash size={16} /></button></div>)}{!data.availabilitySlots.length && <p className="text-sm text-kumo-subtle">No availability configured.</p>}</div></section>
++    </div>
++    <section className="bg-kumo-elevated border border-kumo-line rounded-xl p-5"><div className="flex items-center gap-3 mb-4"><Tag size={20} className="text-kumo-subtle" /><h3 className="font-medium text-kumo-strong">Booking Types</h3></div><div className="grid gap-3 sm:grid-cols-2">{data.bookingTypes.map((type) => <div key={type.id} className="rounded-lg border border-kumo-line px-3 py-3"><div className="flex items-center gap-2 text-sm font-medium text-kumo-strong"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: type.color }} />{type.name}</div><p className="text-xs text-kumo-subtle mt-1">{type.durationMinutes} min · {type.active ? 'Active' : 'Inactive'}</p></div>)}</div></section>
++  </div>
++}
+diff --git a/packages/workshop-frontend/src/components/VectorStoreAdminPanel.tsx b/packages/workshop-frontend/src/components/VectorStoreAdminPanel.tsx
+new file mode 100644
+index 0000000..fcd38e4
+--- /dev/null
++++ b/packages/workshop-frontend/src/components/VectorStoreAdminPanel.tsx
+@@ -0,0 +1,128 @@
++import { useCallback, useEffect, useRef, useState } from 'react'
++import { Database, Trash } from '@phosphor-icons/react'
++import { useKumoToastManager } from '@cloudflare/kumo'
++
++type Vector = { key?: string; data: number[]; metadata: unknown }
++
++const API = '/vector-store/api'
++
++const metadataEntries = (metadata: unknown): Array<[string, string]> => {
++  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
++    return [['Value', JSON.stringify(metadata)]]
++  }
++  return Object.entries(metadata).map(([key, value]) => [key, JSON.stringify(value)])
++}
++
++async function request<T>(path: string, options?: RequestInit): Promise<T> {
++  const response = await fetch(`${API}${path}`, { cache: 'no-store', ...options })
++  let body: unknown
++  try { body = await response.json() } catch { throw new Error(`Vector service returned ${response.status}`) }
++  if (!response.ok) {
++    const message = body && typeof body === 'object' && 'error' in body ? body.error : undefined
++    throw new Error(typeof message === 'string' ? message : `Vector service returned ${response.status}`)
++  }
++  return body as T
++}
++
++export default function VectorStoreAdminPanel() {
++  const toasts = useKumoToastManager()
++  const toastsRef = useRef(toasts)
++  const [indexes, setIndexes] = useState<string[]>([])
++  const [bucket, setBucket] = useState('')
++  const [index, setIndex] = useState('')
++  const [vectors, setVectors] = useState<Vector[]>([])
++  const [selected, setSelected] = useState<Vector | null>(null)
++  const [filter, setFilter] = useState('')
++  const [loading, setLoading] = useState(true)
++  const [busy, setBusy] = useState<string | null>(null)
++
++  const loadVectors = useCallback(async (nextIndex: string, nextBucket = bucket) => {
++    if (!nextIndex) { setVectors([]); setSelected(null); return }
++    setBusy('load')
++    try {
++      setVectors(await request<Vector[]>(`/vectors?bucket=${encodeURIComponent(nextBucket)}&index=${encodeURIComponent(nextIndex)}`))
++      setSelected(null)
++    } catch (error) {
++      toastsRef.current.add({ title: error instanceof Error ? error.message : 'Failed to load vectors', variant: 'error' })
++    } finally { setBusy(null) }
++  }, [bucket])
++
++  const loadIndexes = useCallback(async () => {
++    setLoading(true)
++    try {
++      const buckets = await request<string[]>('/buckets')
++      const nextBucket = buckets[0] ?? ''
++      if (!nextBucket) throw new Error('The vector Worker has no configured bucket.')
++      setBucket(nextBucket)
++      const values = await request<string[]>(`/indexes?bucket=${encodeURIComponent(nextBucket)}`)
++      setIndexes(values)
++      const nextIndex = values.includes(index) ? index : values[0] ?? ''
++      setIndex(nextIndex)
++      await loadVectors(nextIndex, nextBucket)
++    } catch (error) {
++      toastsRef.current.add({ title: error instanceof Error ? error.message : 'Failed to load vector indexes', variant: 'error' })
++    } finally { setLoading(false) }
++  }, [index, loadVectors])
++
++  useEffect(() => { void loadIndexes() }, [loadIndexes])
++
++  const deleteVector = async () => {
++    if (!selected || !index || !window.confirm(`Permanently delete vector ${selected.key}?`)) return
++    setBusy(`delete-${selected.key}`)
++    try {
++      await request(`/vectors?bucket=${encodeURIComponent(bucket)}&index=${encodeURIComponent(index)}`, {
++        method: 'DELETE',
++        headers: { 'content-type': 'application/json' },
++        body: JSON.stringify({ key: selected.key }),
++      })
++      toastsRef.current.add({ title: 'Vector deleted', variant: 'success' })
++      await loadVectors(index)
++    } catch (error) {
++      toastsRef.current.add({ title: error instanceof Error ? error.message : 'Failed to delete vector', variant: 'error' })
++    } finally { setBusy(null) }
++  }
++
++  const query = filter.toLowerCase()
++  const visible = vectors.filter((vector) => `${vector.key ?? ''} ${JSON.stringify(vector.metadata)}`.toLowerCase().includes(query))
++  const dimensions = [...new Set(vectors.map((vector) => vector.data.length).filter(Boolean))]
++  const metadataKeys = new Set(vectors.flatMap((vector) => metadataEntries(vector.metadata).map(([key]) => key)))
++
++  return <div className="space-y-6">
++    <div className="flex items-start justify-between gap-4">
++      <div>
++        <h2 className="text-lg font-semibold text-kumo-strong">Skatetricks Knowledge</h2>
++        <p className="text-sm text-kumo-subtle mt-1">Read vector metadata and remove individual embeddings from the private S3 Vectors store.</p>
++      </div>
++      <Database size={22} className="text-kumo-subtle" />
++    </div>
++
++    <section className="bg-kumo-elevated border border-kumo-line rounded-xl p-5 space-y-4">
++      <div className="flex flex-wrap items-end gap-3">
++        <p className="w-full text-xs text-kumo-subtle">Vector bucket: <span className="font-mono text-kumo-default">{bucket || 'Loading...'}</span></p>
++        <label className="text-sm text-kumo-default">Index<select value={index} onChange={(event) => { setIndex(event.target.value); void loadVectors(event.target.value) }} disabled={loading || !indexes.length} className="mt-1 block rounded-lg border border-kumo-line bg-kumo-base px-3 py-2 text-sm"><option value="">Choose an index</option>{indexes.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
++        <label className="text-sm text-kumo-default flex-1 min-w-52">Filter<input type="search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Key or metadata" className="mt-1 block w-full rounded-lg border border-kumo-line bg-kumo-base px-3 py-2 text-sm" /></label>
++        <button type="button" onClick={() => void loadIndexes()} disabled={busy !== null} className="rounded-lg border border-kumo-line px-4 py-2 text-sm text-kumo-default disabled:opacity-50">Refresh</button>
++      </div>
++      <div aria-label="Index summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
++        <div className="rounded-lg border border-kumo-line bg-kumo-base p-3"><p className="text-xs text-kumo-subtle">Records shown</p><p className="mt-1 text-lg font-semibold text-kumo-strong">{vectors.length}</p></div>
++        <div className="rounded-lg border border-kumo-line bg-kumo-base p-3"><p className="text-xs text-kumo-subtle">Matching filter</p><p className="mt-1 text-lg font-semibold text-kumo-strong">{visible.length}</p></div>
++        <div className="rounded-lg border border-kumo-line bg-kumo-base p-3"><p className="text-xs text-kumo-subtle">Embedding dimensions</p><p className="mt-1 text-lg font-semibold text-kumo-strong">{dimensions.length === 1 ? dimensions[0] : dimensions.length ? 'Mixed' : '—'}</p></div>
++        <div className="rounded-lg border border-kumo-line bg-kumo-base p-3"><p className="text-xs text-kumo-subtle">Metadata fields</p><p className="mt-1 text-lg font-semibold text-kumo-strong">{metadataKeys.size}</p></div>
++      </div>
++      <p className="text-xs text-kumo-subtle">Each record pairs a key with an embedding and its metadata. The embedding is represented by its dimensions; source content appears only when the writer stored it as metadata.</p>
++      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.8fr)]">
++        <div className="max-h-96 overflow-y-auto rounded-lg border border-kumo-line">
++          <p className="border-b border-kumo-line px-4 py-3 text-xs font-medium text-kumo-subtle">Vector records</p>
++          {busy === 'load' && <p className="p-4 text-sm text-kumo-subtle">Loading vectors...</p>}
++          {!busy && !visible.length && <p className="p-4 text-sm text-kumo-subtle">No vectors found.</p>}
++          {visible.map((vector) => <button type="button" key={vector.key} onClick={() => setSelected(vector)} className={`flex w-full items-center justify-between gap-3 border-b border-kumo-line px-4 py-3 text-left last:border-0 ${selected?.key === vector.key ? 'bg-kumo-tint' : 'hover:bg-kumo-tint'}`}><span className="min-w-0 truncate text-sm text-kumo-strong">{vector.key ?? '(unnamed vector)'}</span><span className="shrink-0 text-xs text-kumo-subtle">{vector.data.length}d</span></button>)}
++        </div>
++        <div className="rounded-lg border border-kumo-line p-4">
++          {!selected && <p className="text-sm text-kumo-subtle">Select a record to inspect its key, dimensions, and metadata.</p>}
++          {selected && <><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-medium text-kumo-subtle">Selected record</p><h3 className="break-all text-sm font-semibold text-kumo-strong">{selected.key}</h3><p className="mt-1 text-xs text-kumo-subtle">{selected.data.length} dimensions</p></div><button type="button" onClick={() => void deleteVector()} disabled={busy === `delete-${selected.key}`} className="inline-flex shrink-0 items-center gap-1 text-sm text-kumo-danger hover:underline disabled:opacity-50"><Trash size={15} />Delete</button></div><dl className="mt-4 divide-y divide-kumo-line rounded-lg border border-kumo-line">{metadataEntries(selected.metadata).map(([key, value]) => <div key={key} className="grid gap-1 px-3 py-2 sm:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)] sm:gap-3"><dt className="break-words text-xs font-medium text-kumo-subtle">{key}</dt><dd className="break-words text-xs text-kumo-default">{value}</dd></div>)}</dl></>}
++        </div>
++      </div>
++    </section>
++    <p className="text-xs text-kumo-subtle">Deletion is permanent. Index creation, recreation, and bucket management remain infrastructure operations outside this UI.</p>
++  </div>
++}
+diff --git a/scripts/release/testdata/golden-manifest.json b/scripts/release/testdata/golden-manifest.json
+index c0cbfd6..c25c2ba 100644
+--- a/scripts/release/testdata/golden-manifest.json
++++ b/scripts/release/testdata/golden-manifest.json
+@@ -1206,6 +1206,8 @@
+         "run_worker_first": [
+           "/api",
+           "/api/*",
++          "/vector-store",
++          "/vector-store/*",
+           "/blueprint-screenshot",
+           "/blueprint-screenshot/*",
+           "/gatekeeper/*"
