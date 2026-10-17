@@ -38,7 +38,7 @@ const defaultContextArtifactsNamespace = "gatekeeper-context-collections";
 // Newest date every Wrangler that deploys a Worker here will apply.
 // Parent Workers (public chat, s3v explorer, custom gatekeeper, error reporter) use the catalog
 // Wrangler, currently 4.149.0, whose workerd 1.20261006.1 newest date is 2026-10-06.
-// Submodule Workers use the fork's Wrangler 4.147.0, whose workerd 1.20261001.1 newest date is
+// Submodule Workers use the pinned upstream Wrangler 4.147.0, whose workerd 1.20261001.1 newest date is
 // 2026-10-01. 2026-10-06 is past that workerd, so the shared date stops at 2026-10-01.
 // Stamped onto every generated Worker, including the four whose wrangler files live in the
 // pinned submodule, so those upstream files stay at their own date.

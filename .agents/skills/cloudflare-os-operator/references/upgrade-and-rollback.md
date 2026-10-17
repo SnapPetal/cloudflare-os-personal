@@ -9,7 +9,7 @@ Never advance the `cloudflare-os` submodule to a moving branch or an assumed lat
 1. Record the current parent commit and full submodule gitlink.
 2. Select an explicit full target commit from an approved source.
 3. Prove the target commit's provenance and review release history plus the complete old-to-new diff.
-4. Keep the parent and submodule worktrees clean except for the intentional gitlink/wrapper compatibility changes.
+4. Keep the parent worktree limited to the gitlink, catalog, and `patches/cloudflare-os` refresh. `pnpm apply:patches` dirties the submodule working tree on purpose; do not commit those edits inside `cloudflare-os`.
 5. Retain the old gitlink, configs, Worker deployment IDs, resource identities, and compatibility notes.
 
 If using a mirror, prove the exact commit exists without changing the active checkout first. Use a temporary clone or fetch the exact full SHA from the approved mirror where supported, inspect the commit object, and compare it to the intended source. Do not alter `.gitmodules` or check out a nearby branch head as a test.

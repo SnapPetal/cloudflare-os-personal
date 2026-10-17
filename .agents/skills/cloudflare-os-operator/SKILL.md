@@ -42,12 +42,15 @@ Expected baseline commands are:
 
 ```sh
 git submodule update --init
+pnpm apply:patches
 pnpm install
 pnpm --dir cloudflare-os install
 pnpm exec wrangler login
 pnpm check
 pnpm deploy
 ```
+
+`pnpm apply:patches` edits the submodule working tree and leaves it dirty. That dirty tree is the personal patch set. Do not commit it inside `cloudflare-os`. The gitlink must stay an upstream commit.
 
 Confirm them against the checkout before running them. Always use `pnpm`, never `npm` or `yarn`.
 

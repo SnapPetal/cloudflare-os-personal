@@ -47,7 +47,7 @@ The production deployment is performed by GitHub Actions from `main`. Open **Act
 
 ## Overview
 
-This repository adds deployment controls around a pinned [Cloudflare OS](https://github.com/cloudflare/cloudflare-os) release without modifying the upstream source.
+This repository adds deployment controls around a pinned [Cloudflare OS](https://github.com/cloudflare/cloudflare-os) release. The pinned commit stays unmodified upstream. Personal edits are patches applied at build time, not commits on the fork.
 
 | Control | What you own |
 | --- | --- |
@@ -84,6 +84,7 @@ Install [mise](https://mise.jdx.dev/), then use the repository-pinned Node.js 24
 ```sh
 mise install
 git submodule update --init
+mise exec -- pnpm apply:patches
 mise exec -- pnpm install
 mise exec -- pnpm --dir cloudflare-os install
 mise exec -- pnpm exec wrangler login
@@ -109,7 +110,7 @@ mise exec -- pnpm check
 mise exec -- pnpm deploy
 ```
 
-For production, use the checked-in [GitHub Actions workflow](.github/workflows/deploy.yml). It checks out the `cloudflare-os` submodule, installs both dependency trees, runs `pnpm check`, and then runs `pnpm deploy`. Do not replace it with the Cloudflare dashboard's generic `npx wrangler deploy` command.
+For production, use the checked-in [GitHub Actions workflow](.github/workflows/deploy.yml). It checks out the `cloudflare-os` submodule, applies `patches/cloudflare-os`, installs both dependency trees, runs `pnpm check`, and then runs `pnpm deploy`. Do not replace it with the Cloudflare dashboard's generic `npx wrangler deploy` command.
 
 With resource values left as `null`, Wrangler creates the three KV namespaces and R2 bucket automatically and reconnects them on later deploys. Set explicit IDs or a bucket name when the deployment must reuse existing resources.
 
@@ -139,7 +140,7 @@ Family Quest (`packages/family-quest`, Worker `thonbecker-family-quest`) is in t
 | Sign-in, routes, AI, storage, observability, Worker identities | [`deployment.jsonc`](deployment.jsonc) | Yes |
 | Logs, traces, error destinations, browser reporting | [Observability guide](docs/observability.md) | Sometimes |
 | Organization APIs and capabilities | [`packages/custom-gatekeeper`](packages/custom-gatekeeper/README.md) | Yes |
-| Product behavior unavailable through Worker boundaries | Pinned upstream fork/commit | Yes |
+| Product behavior unavailable through Worker boundaries | [`patches/cloudflare-os`](patches/cloudflare-os) on the pinned upstream commit | Yes |
 
 The complete control reference and recipes live in [Customization](docs/customization.md). The upstream [`write-gatekeeper` skill](https://github.com/cloudflare/cloudflare-os/blob/main/.agents/skills/write-gatekeeper/SKILL.md) covers richer integrations.
 
@@ -198,9 +199,52 @@ through the `/vector-store` service binding.
 - Triage explicit failures and choose export destinations with the [observability guide](docs/observability.md).
 - Find the version IDs to roll back to in the [deployment log](docs/deployments.md), then roll a Worker back with [`wrangler rollback`](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/). The Workshop and the router roll back as a pair; the reasons are in that log.
 - Check whether the pinned submodule is behind upstream with `pnpm sync:upstream`, which reports without changing anything.
-- Follow the [upgrade checklist](docs/customization.md#upgrade) before changing the pinned submodule.
-- Follow the [upstream sync workflow](docs/upstream-sync.md) when updating either fork layer.
+- Follow [Bump the upstream pin](#bump-the-upstream-pin) before changing the pinned submodule. The submodule URL is upstream; personal edits are patches, not commits on `SnapPetal/cloudflare-os`.
 - Review the upstream Cloudflare OS documentation and release history before adopting behavior changes.
+
+## Bump the upstream pin
+
+`cloudflare-os` is a gitlink to an unmodified commit of [cloudflare/cloudflare-os](https://github.com/cloudflare/cloudflare-os). Booking admin and the Skatetricks vector panel are not in that commit. `pnpm apply:patches` (`scripts/apply-cloudflare-os-patches.sh`) applies `patches/cloudflare-os/*.patch` with `git apply` before either install. CI (`.github/workflows/pr.yml` and `.github/workflows/deploy.yml`) runs that same script. A patch that does not apply fails the job. The script leaves an already-patched tree alone.
+
+The applied result is a dirty submodule working tree. Do not commit it. The gitlink has to stay the upstream SHA, or the next checkout will not be upstream and the patches will not apply. After this change is merged, `SnapPetal/cloudflare-os` can be reset to upstream. Deploys clone upstream at the gitlink and apply the patches from this repository, so the fork is not on the build path.
+
+`pnpm sync:upstream` fetches upstream and reports how far the gitlink is behind `main`. It does not move the pin. Exit code 3 means there are upstream commits to review.
+
+To move the pin:
+
+1. Record the current gitlink (`git rev-parse HEAD:cloudflare-os`).
+2. Fetch and check out the upstream commit you mean to pin. It must be on `upstream/main`.
+
+   ```sh
+   git -C cloudflare-os fetch origin main
+   git -C cloudflare-os checkout --detach <full-sha>
+   ```
+
+3. Reapply the patches. If this fails, the new upstream touched a patched file.
+
+   ```sh
+   pnpm apply:patches
+   ```
+
+4. When a patch fails, refresh it on the new pin. From a clean checkout of that SHA, reapply the hunks that still fit, fix the rest, and keep upstream's behavior except where the personal feature needs the new code. Then regenerate the patch from the submodule, including new files:
+
+   ```sh
+   git -C cloudflare-os add -- packages/router packages/workshop-backend packages/workshop-frontend scripts/release/testdata/golden-manifest.json
+   git -C cloudflare-os diff --cached > patches/cloudflare-os/0001-personal-admin-integrations.patch
+   git -C cloudflare-os reset
+   ```
+
+   If `packages/router/cloudflare.config.ts` changed, `pnpm --dir cloudflare-os configs:check` must pass (it regenerates nothing; run `pnpm --dir cloudflare-os configs:generate` only to refresh `wrangler.jsonc`, then include that file in the patch). If router `run_worker_first` changed, regenerate the golden manifest and include it too:
+
+   ```sh
+   cd cloudflare-os && UPDATE_GOLDEN=1 node --test scripts/release/manifest-lib.test.ts
+   ```
+
+5. Diff `cloudflare-os/pnpm-workspace.yaml`'s `catalog:` and `overrides:` against this repository's `pnpm-workspace.yaml` and copy upstream's values. Keep the parent-only `sharp` override. `pnpm sync:upstream` exits 2 when these drift.
+6. Run `pnpm install`, `pnpm --dir cloudflare-os install`, `pnpm lint`, and `pnpm check`. The golden manifest test is `node --test scripts/release/manifest-lib.test.ts` inside `cloudflare-os`.
+7. Commit the gitlink, the refreshed patch, and any catalog or lockfile edits in **this** repository. Do not commit the patched files inside `cloudflare-os`.
+
+`git add cloudflare-os` records the submodule's HEAD, which is still the upstream SHA after `git apply`. Confirm with `git rev-parse HEAD:cloudflare-os` before pushing.
 
 ### Moving here from the hosted deploy (os.cloudflare.app/deploy)
 

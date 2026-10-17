@@ -208,19 +208,19 @@ Read the [package guide](../packages/custom-gatekeeper/README.md) and upstream [
 
 ## Code extensions
 
-Prefer wrapper-owned Workers and [service bindings](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/) over patches inside the submodule. When a Worker boundary cannot express the behavior, keep the change as a reviewable commit in the [`SnapPetal/cloudflare-os`](https://github.com/SnapPetal/cloudflare-os) fork rather than a generated overlay.
+Prefer wrapper-owned Workers and [service bindings](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/) over edits inside the submodule. When a Worker boundary cannot express the behavior, keep it as a patch in [`patches/cloudflare-os`](../patches/cloudflare-os). `pnpm apply:patches` applies those patches onto the pinned upstream commit. Do not commit the result inside `cloudflare-os`, and do not put it on `SnapPetal/cloudflare-os`.
 
 ## Upgrade
 
-0. Run `pnpm sync:upstream` first. If the fork is not behind `upstream/main`, stop — there is nothing
-   to do. The full procedure is in [Upstream sync](upstream-sync.md).
+0. Run `pnpm sync:upstream` first. If the pin is `upstream/main`, stop — there is nothing to do.
+   The full procedure is [Bump the upstream pin](../README.md#bump-the-upstream-pin).
 1. Record the current `cloudflare-os` gitlink for rollback, and read the current version IDs out of
    [`docs/deployments.md`](deployments.md) before anything deploys.
-2. Update the submodule to the intended commit in the personal fork, after reviewing the corresponding upstream changes.
+2. Check out the intended upstream commit. Reapply `patches/cloudflare-os` and refresh any patch that does not apply.
 3. Review Workshop and Context Wrangler base-config changes and Gatekeeper contracts.
 4. Diff `cloudflare-os/pnpm-workspace.yaml`'s `catalog:` against this repository's and re-sync it. Two submodule packages are members of this workspace and resolve `catalog:` here, so a missing entry fails the install and a *stale* one silently gives the tree two copies of `capnweb` — a failure that only appears once the two installs are separate, as they are in CI.
-5. Run `pnpm install`, `pnpm --dir cloudflare-os install`, `pnpm lint`, and `pnpm check`.
+5. Run `pnpm apply:patches`, `pnpm install`, `pnpm --dir cloudflare-os install`, `pnpm lint`, and `pnpm check`. Also run `pnpm --dir cloudflare-os configs:check` and `node --test scripts/release/manifest-lib.test.ts` inside `cloudflare-os`.
 6. Deploy and verify Access, administrator access, storage, configured AI, Context, custom observations, and the Error Reporter query surface. Note that pushing to `main` deploys on its own — see [TROUBLESHOOTING](../TROUBLESHOOTING.md#every-push-to-main-deploys).
 7. If needed, restore the previous gitlink and redeploy, or use [Workers rollback](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/) when bindings remain compatible. Roll the Workshop before the router; the reverse breaks `/admin`.
 
-Do not update the submodule blindly. The deployment script derives from the fork's configs so incompatible base changes remain visible during review and checks.
+Do not update the submodule blindly. The deployment script derives from the pinned upstream configs, after the personal patches, so incompatible base changes remain visible during review and checks.
