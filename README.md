@@ -146,27 +146,6 @@ The complete control reference and recipes live in [Customization](docs/customiz
 
 If deployment or dashboard setup fails, see [Troubleshooting](TROUBLESHOOTING.md).
 
-### Public chat experiment: important boundary
-
-The public website chat experiment must **not** be implemented with PersonalWeb Spring AI and must not
-expose the Cloudflare OS Workshop directly. Cloudflare OS remains a private, Access-protected learning and
-operations workspace at `os.thonbecker.biz`. The public website widget uses a separate, narrowly scoped
-Cloudflare Worker for booking availability. It calls OpenAI server-side and receives only read-only
-availability from a narrow PersonalWeb endpoint. It must not access booking records, booking actions, the
-PersonalWeb database, AWS credentials, or Cloudflare OS administration. The visitor's IANA timezone is
-sent with each request; `America/Chicago` is the fallback.
-
-The public Worker is `thonbecker-public-chat` at `chat.thonbecker.biz`. Attach its secret after the Worker
-has been deployed:
-
-```bash
-pnpm exec wrangler secret put OPENAI_API_KEY --name thonbecker-public-chat
-```
-
-The Worker applies a Cloudflare Rate Limiting binding of 10 requests per minute per client IP before
-calling OpenAI. The in-memory limiter remains only as a local-development fallback. The rate-limit
-namespace ID in `packages/public-chat/wrangler.jsonc` must be unique within the Cloudflare account.
-
 ### Private booking operations
 
 The Workshop `/admin` surface includes the private booking operations panel. It uses the same Cloudflare

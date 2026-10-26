@@ -109,7 +109,6 @@ export interface DeploymentConfig {
     /** Owns the public route, serves the frontend, and proxies to every other Worker. */
     router: { name: string; route: RouterRoute };
     workshop: { name: string };
-    publicChat: { name: string; route: RouterRoute };
     s3vExplorer: { name: string; route: RouterRoute };
     /** Public Family Quest table. Prefer a custom domain such as quest.thonbecker.biz. */
     familyQuest: { name: string; route: RouterRoute };
@@ -133,10 +132,9 @@ export interface DeploymentConfig {
     blueprintContentBucket: string | null;
   };
   s3vExplorer: { region: string; vectorBucketName: string };
-  /** PersonalWeb booking API boundary; PersonalWeb remains the booking source of truth. */
+  /** PersonalWeb origin for the private Workshop booking admin proxy. */
   personalWeb: {
     baseUrl: string;
-    booking: { availabilityPath: string };
   };
   observability: DeploymentObservabilityConfig;
 }
@@ -189,7 +187,6 @@ export type ProdWranglerConfig =
 export interface GeneratedConfigs {
   router: ProdWranglerConfig;
   workshop: ProdWranglerConfig;
-  publicChat: ProdWranglerConfig;
   s3vExplorer: ProdWranglerConfig;
   familyQuest: ProdWranglerConfig;
   context: ProdWranglerConfig;
@@ -203,7 +200,6 @@ export interface GeneratedConfigs {
 export interface BaseConfigs {
   router: ProdWranglerConfig;
   workshop: ProdWranglerConfig;
-  publicChat: ProdWranglerConfig;
   s3vExplorer: ProdWranglerConfig;
   familyQuest: ProdWranglerConfig;
   context: ProdWranglerConfig;

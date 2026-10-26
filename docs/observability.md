@@ -79,7 +79,7 @@ The Error Reporter intentionally flattens the normalized event and trusted produ
 
 ## Sampling and traces
 
-The deployment controls apply to every Worker: the router, Workshop, Context, Scheduler, custom Gatekeeper, Error Reporter, public chat, and `thonbecker-s3v-explorer`:
+The deployment controls apply to every Worker: the router, Workshop, Context, Scheduler, custom Gatekeeper, Error Reporter, `thonbecker-s3v-explorer`, and `thonbecker-family-quest`:
 
 ```jsonc
 "observability": {

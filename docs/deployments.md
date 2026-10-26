@@ -17,6 +17,9 @@ Every deployment lands here eventually, from either path. A gap in this file mea
 yet written down, not that it did not happen — `gh run list --workflow=deploy.yml` is the other
 source of truth.
 
+Entries that name `thonbecker-public-chat` are historical version IDs from deploys that included
+that Worker. The package has been removed, and current deploys omit it.
+
 ## 2026-09-26 23:49 UTC — CI run 36280605434
 
 Root `d011db4`, submodule `270ca7c5`. Push-triggered; deployed after the local run below.

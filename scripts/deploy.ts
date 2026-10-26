@@ -22,7 +22,6 @@ const generatedName = "wrangler.prod.jsonc";
 const packageDirs = {
   router: "cloudflare-os/packages/router",
   workshop: "cloudflare-os/packages/workshop-backend",
-  publicChat: "packages/public-chat",
   s3vExplorer: "packages/s3v-explorer",
   familyQuest: "packages/family-quest",
   context: "cloudflare-os/packages/gatekeeper-context",
@@ -36,7 +35,7 @@ const generatedPaths = Object.fromEntries(
 const defaultContextArtifactsNamespace = "gatekeeper-context-collections";
 
 // Newest date every Wrangler that deploys a Worker here will apply.
-// Parent Workers (public chat, s3v explorer, custom gatekeeper, error reporter) use the catalog
+// Parent Workers (s3v explorer, family quest, custom gatekeeper, error reporter) use the catalog
 // Wrangler, currently 4.149.0, whose workerd 1.20261006.1 newest date is 2026-10-06.
 // Submodule Workers use the pinned upstream Wrangler 4.147.0, whose workerd 1.20261001.1 newest date is
 // 2026-10-01. 2026-10-06 is past that workerd, so the shared date stops at 2026-10-01.
@@ -61,7 +60,6 @@ const requiredPaths = [
   "accountId",
   "workers.router.name",
   "workers.workshop.name",
-  "workers.publicChat.name",
   "workers.s3vExplorer.name",
   "workers.familyQuest.name",
   "workers.context.name",
@@ -82,7 +80,6 @@ const requiredPaths = [
   "s3vExplorer.region",
   "s3vExplorer.vectorBucketName",
   "personalWeb.baseUrl",
-  "personalWeb.booking.availabilityPath",
 ];
 
 // `aiGateway.accountId` is deliberately absent: null is its normal value, meaning "the gateway
@@ -270,7 +267,6 @@ export function validateConfig(config: DeploymentConfig): DeploymentConfig {
   }
 
   for (const [label, workerRoute] of [
-    ["Public chat", config.workers.publicChat.route],
     ["Family Quest", config.workers.familyQuest.route],
   ] as const) {
     if (!workerRoute || Boolean(workerRoute.workersDev) === Boolean(workerRoute.customDomain)) {
@@ -293,7 +289,6 @@ export function validateConfig(config: DeploymentConfig): DeploymentConfig {
     ["s3vExplorer.region", config.s3vExplorer.region],
     ["s3vExplorer.vectorBucketName", config.s3vExplorer.vectorBucketName],
     ["personalWeb.baseUrl", config.personalWeb.baseUrl],
-    ["personalWeb.booking.availabilityPath", config.personalWeb.booking.availabilityPath],
   ] as const) {
     if (typeof value !== "string" || !value.trim()) throw new Error(`${label} must be a string.`);
   }
@@ -493,7 +488,6 @@ export function generateConfigs(config: DeploymentConfig, bases: BaseConfigs): G
   validateConfig(config);
   const router = structuredClone(bases.router);
   const workshop = structuredClone(bases.workshop);
-  const publicChat = structuredClone(bases.publicChat);
   const s3vExplorer = structuredClone(bases.s3vExplorer);
   const familyQuest = structuredClone(bases.familyQuest);
   const context = structuredClone(bases.context);
@@ -638,16 +632,6 @@ export function generateConfigs(config: DeploymentConfig, bases: BaseConfigs): G
     setCommon(errorReporter, config, config.workers.errorReporter!.name);
   }
 
-  setCommon(publicChat, config, config.workers.publicChat.name, config.workers.publicChat.route);
-  publicChat.ai = { binding: "AI" };
-  publicChat.vars = {
-    AI_MODEL: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-    BOOKING_AVAILABILITY_URL: new URL(
-      config.personalWeb.booking.availabilityPath,
-      `${config.personalWeb.baseUrl.replace(/\/$/, "")}/`,
-    ).toString(),
-  };
-
   setCommon(s3vExplorer, config, config.workers.s3vExplorer.name, config.workers.s3vExplorer.route);
   s3vExplorer.vars = {
     AWS_REGION: config.s3vExplorer.region,
@@ -665,7 +649,7 @@ export function generateConfigs(config: DeploymentConfig, bases: BaseConfigs): G
   };
 
   return {
-    router, workshop, publicChat, s3vExplorer, familyQuest, context, scheduler, customGatekeeper,
+    router, workshop, s3vExplorer, familyQuest, context, scheduler, customGatekeeper,
     ...(errorReporter && { errorReporter }),
   };
 }
@@ -712,7 +696,6 @@ export function buildCommands(config: DeploymentConfig): BuildCommand[] {
     // The Scheduler's `build` nests the same cached `vp run build:app`, so it needs the same pair.
     { args: submoduleBuild("@gadgets/gatekeeper-scheduler", "build:app") },
     { args: submoduleBuild("@gadgets/gatekeeper-scheduler") },
-    { args: ownBuild("thonbecker-public-chat", "types:check") },
     { args: ownBuild("thonbecker-s3v-explorer", "types:check") },
     { args: ownBuild("thonbecker-family-quest", "types:check") },
     { args: ownBuild("thonbecker-personal-os-gatekeeper") },
@@ -969,7 +952,6 @@ async function main(): Promise<void> {
   const generated = generateConfigs(config, {
     router: await readJsonc(join(root, packageDirs.router, "wrangler.jsonc")),
     workshop: await readJsonc(join(root, packageDirs.workshop, "wrangler.jsonc")),
-    publicChat: await readJsonc(join(root, packageDirs.publicChat, "wrangler.jsonc")),
     s3vExplorer: await readJsonc(join(root, packageDirs.s3vExplorer, "wrangler.jsonc")),
     familyQuest: await readJsonc(join(root, packageDirs.familyQuest, "wrangler.jsonc")),
     context: await readJsonc(join(root, packageDirs.context, "wrangler.jsonc")),
@@ -1001,7 +983,6 @@ async function main(): Promise<void> {
       if (config.errorReporting.enabled) {
         deployOne(packageDirs.errorReporter);
       }
-      deployOne(packageDirs.publicChat);
       deployOne(packageDirs.s3vExplorer);
       deployOne(packageDirs.context);
       deployOne(packageDirs.scheduler);
