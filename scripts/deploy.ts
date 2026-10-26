@@ -917,6 +917,267 @@ function reportAiGateway(config: DeploymentConfig): void {
     `--name ${config.workers.workshop.name}\n`);
 }
 
+/**
+ * Workers `pnpm deploy` is allowed to delete. The list is the whole permission: a name has to be
+ * written here, and it has to be absent from `deployment.jsonc`, before any request is sent.
+ * Anything else in the account is left in place.
+ *
+ * `thonbecker-public-chat` served chat.thonbecker.biz. Booking chat now lives in PersonalWeb, and
+ * the Worker was removed from this repo without a way for deploy to delete what Cloudflare still
+ * had. The next deploy detaches that custom domain (and its Worker DNS record) and then deletes
+ * the Worker. A later deploy finds it already gone and does nothing.
+ */
+export const RETIRED_WORKERS = ["thonbecker-public-chat"] as const;
+
+const workerNamePattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const cloudflareApi = "https://api.cloudflare.com/client/v4";
+/** Wrangler treats these as "this Worker is not there". */
+const workerNotFoundCodes = new Set([10007, 10090]);
+
+export interface WorkerDomain {
+  id: string;
+  hostname: string;
+  service: string;
+}
+
+/** The only Cloudflare operations retirement is allowed to perform, per Worker name. */
+export interface RetirementClient {
+  /** False when that Worker does not exist. */
+  getWorker(name: string): Promise<boolean>;
+  /** Custom domains whose `service` is `name`. */
+  listDomains(name: string): Promise<WorkerDomain[]>;
+  detachDomain(domain: WorkerDomain): Promise<void>;
+  deleteWorker(name: string): Promise<void>;
+}
+
+export interface RetirementResult {
+  name: string;
+  outcome: "absent" | "deleted";
+  detachedHostnames: string[];
+}
+
+interface CloudflareEnvelope<T> {
+  success?: boolean;
+  errors?: { code?: number; message?: string }[];
+  result?: T;
+  result_info?: { total_pages?: number };
+}
+
+/** Names configured in `deployment.jsonc`, whether or not this run deploys them. */
+export function activeWorkerNames(workers: DeploymentConfig["workers"]): string[] {
+  return Object.values(workers).flatMap((worker) => worker ? [worker.name] : []);
+}
+
+/**
+ * Reject a retired-worker list that could delete something this deployment still uses, or a name
+ * that is not safe to put in an API path.
+ */
+export function assertRetirementAllowlist(
+  retired: readonly string[],
+  active: readonly string[],
+): void {
+  const seen = new Set<string>();
+  for (const name of retired) {
+    if (!workerNamePattern.test(name)) {
+      throw new Error(`Retired Worker name "${name}" must use lowercase letters, numbers, and hyphens.`);
+    }
+    if (seen.has(name)) throw new Error(`Retired Worker ${name} is listed more than once.`);
+    seen.add(name);
+    if (active.includes(name)) {
+      throw new Error(
+        `Refusing to delete ${name}: it is still an active Worker in deployment.jsonc.`);
+    }
+  }
+}
+
+/**
+ * Delete only `retired` Workers, and only when each name is also on {@link RETIRED_WORKERS}.
+ * A Worker that is already gone is a success with no further requests. A Worker that still has a
+ * custom domain has that domain detached before the Worker is deleted; detaching it is what
+ * releases the Worker-managed DNS record. A domain for any other Worker aborts before any detach
+ * or delete.
+ */
+export async function retireWorkers(input: {
+  retired: readonly string[];
+  active: readonly string[];
+  client: RetirementClient;
+}): Promise<RetirementResult[]> {
+  const allowlist = new Set<string>(RETIRED_WORKERS);
+  for (const name of input.retired) {
+    if (!allowlist.has(name)) {
+      throw new Error(`Refusing to delete ${name}: it is not on the retired Worker allowlist.`);
+    }
+  }
+  assertRetirementAllowlist(input.retired, input.active);
+
+  const results: RetirementResult[] = [];
+  for (const name of input.retired) {
+    if (!await input.client.getWorker(name)) {
+      console.log(`Retired Worker ${name} is already absent.`);
+      results.push({ name, outcome: "absent", detachedHostnames: [] });
+      continue;
+    }
+    const domains = await input.client.listDomains(name);
+    for (const domain of domains) {
+      if (domain.service !== name) {
+        throw new Error(
+          `Refusing to detach ${domain.hostname}: it belongs to ${domain.service}, not ${name}.`);
+      }
+    }
+    const detachedHostnames: string[] = [];
+    for (const domain of domains) {
+      await input.client.detachDomain(domain);
+      detachedHostnames.push(domain.hostname);
+      console.log(`Detached ${domain.hostname} from ${name}.`);
+    }
+    await input.client.deleteWorker(name);
+    console.log(`Deleted retired Worker ${name}.`);
+    results.push({ name, outcome: "deleted", detachedHostnames });
+  }
+  return results;
+}
+
+/** Classify a Cloudflare API envelope. Not-found is success for an idempotent delete. */
+export function cloudflareResultKind(
+  status: number,
+  body: CloudflareEnvelope<unknown>,
+): "ok" | "missing" | "error" {
+  if (body.success === true) return "ok";
+  const missing = status === 404 || (body.errors ?? []).some((error) =>
+    error.code !== undefined && workerNotFoundCodes.has(error.code));
+  return missing ? "missing" : "error";
+}
+
+function cloudflareFailure(body: CloudflareEnvelope<unknown>): string {
+  const message = (body.errors ?? [])
+    .map((error) => error.message)
+    .filter((text): text is string => Boolean(text))
+    .join("; ");
+  return message || "Cloudflare API request failed";
+}
+
+async function cloudflareRequest<T>(
+  accountId: string,
+  token: string,
+  path: string,
+  init?: RequestInit,
+): Promise<{ status: number; body: CloudflareEnvelope<T> }> {
+  const response = await fetch(`${cloudflareApi}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+    },
+  });
+  const text = await response.text();
+  if (!text) return { status: response.status, body: { success: response.ok } };
+  try {
+    return { status: response.status, body: JSON.parse(text) as CloudflareEnvelope<T> };
+  } catch {
+    throw new Error(
+      `Cloudflare API returned a non-JSON response (${response.status}) for ${init?.method ?? "GET"} ${path}.`);
+  }
+}
+
+function requireAccountId(accountId: string): void {
+  if (!/^[a-f\d]{32}$/i.test(accountId)) {
+    throw new Error("Cloudflare account IDs must be 32 hexadecimal characters.");
+  }
+}
+
+/**
+ * Talks to the Workers API with `CLOUDFLARE_API_TOKEN`. The deploy workflow already provides that
+ * token. Paths are built only from the account id and a Worker name the allowlist has accepted.
+ */
+export function cloudflareRetirementClient(
+  accountId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): RetirementClient {
+  requireAccountId(accountId);
+  const token = env.CLOUDFLARE_API_TOKEN;
+  if (!token) throw new Error("CLOUDFLARE_API_TOKEN is required to delete retired Workers.");
+  const domainIdPattern = /^[a-f\d]{32}$/i;
+
+  return {
+    async getWorker(name) {
+      const { status, body } = await cloudflareRequest(
+        accountId, token, `/accounts/${accountId}/workers/services/${name}`);
+      const kind = cloudflareResultKind(status, body);
+      if (kind === "ok") return true;
+      if (kind === "missing") return false;
+      throw new Error(`Could not look up Worker ${name}: ${cloudflareFailure(body)}`);
+    },
+    async listDomains(name) {
+      const found: WorkerDomain[] = [];
+      // Same records route Wrangler uses when it reads a Worker's custom domains. Page 0 is that
+      // route's first page. A record for any other service is ignored here and refused again
+      // before a detach.
+      for (let page = 0; page < 20; page++) {
+        const params = new URLSearchParams({
+          service: name,
+          environment: "production",
+          page: String(page),
+          per_page: "100",
+        });
+        const { status, body } = await cloudflareRequest<WorkerDomain[]>(
+          accountId, token, `/accounts/${accountId}/workers/domains/records?${params}`);
+        const kind = cloudflareResultKind(status, body);
+        if (kind === "missing") return found;
+        if (kind === "error") {
+          throw new Error(`Could not list custom domains for ${name}: ${cloudflareFailure(body)}`);
+        }
+        const records = body.result ?? [];
+        if (!Array.isArray(records)) throw new Error(`Could not list custom domains for ${name}.`);
+        for (const record of records) {
+          if (record.service !== name) continue;
+          if (!domainIdPattern.test(record.id) || !record.hostname) {
+            throw new Error(`Custom domain for ${name} is missing an id or hostname.`);
+          }
+          found.push({ id: record.id, hostname: record.hostname, service: record.service });
+        }
+        const totalPages = body.result_info?.total_pages;
+        if (records.length === 0 || totalPages === undefined || page + 1 >= totalPages) break;
+      }
+      return found;
+    },
+    async detachDomain(domain) {
+      if (!workerNamePattern.test(domain.service)) {
+        throw new Error(`Refusing to detach a domain for ${domain.service}.`);
+      }
+      if (!domainIdPattern.test(domain.id)) {
+        throw new Error(`Refusing to detach ${domain.hostname}: its id is not a domain id.`);
+      }
+      // Detach the custom domain before the Worker is deleted. This is the Workers Domains
+      // API, and it is what releases the Worker-managed DNS record. The id came from the
+      // records list above and is checked against the retired service before this runs.
+      const { status, body } = await cloudflareRequest(
+        accountId,
+        token,
+        `/accounts/${accountId}/workers/domains/${domain.id}`,
+        { method: "DELETE" },
+      );
+      const kind = cloudflareResultKind(status, body);
+      if (kind === "error") {
+        throw new Error(
+          `Could not detach ${domain.hostname} from ${domain.service}: ${cloudflareFailure(body)}`);
+      }
+    },
+    async deleteWorker(name) {
+      if (!workerNamePattern.test(name)) throw new Error(`Refusing to delete Worker ${name}.`);
+      const { status, body } = await cloudflareRequest(
+        accountId,
+        token,
+        `/accounts/${accountId}/workers/services/${name}?force=false`,
+        { method: "DELETE" },
+      );
+      const kind = cloudflareResultKind(status, body);
+      if (kind === "error") {
+        throw new Error(`Could not delete Worker ${name}: ${cloudflareFailure(body)}`);
+      }
+    },
+  };
+}
+
 export type FamilyQuestDeploy = "with-family-quest" | "skip-family-quest" | "only-family-quest";
 
 /** Which Family Quest steps this invocation runs. `--check` always includes the dry run. */
@@ -960,6 +1221,19 @@ async function main(): Promise<void> {
     errorReporter: await readJsonc(join(root, packageDirs.errorReporter, "wrangler.jsonc")),
   });
   reportAiGateway(config);
+
+  const activeWorkers = activeWorkerNames(config.workers);
+  // Checked on `--check` too, so a retired name that is still configured fails before any API call.
+  // The API itself runs only on a real deploy: pull-request `pnpm check` has no token and must not
+  // delete anything. Repeating it is safe; a Worker that is already gone does not error.
+  assertRetirementAllowlist(RETIRED_WORKERS, activeWorkers);
+  if (!check) {
+    await retireWorkers({
+      retired: RETIRED_WORKERS,
+      active: activeWorkers,
+      client: cloudflareRetirementClient(config.accountId),
+    });
+  }
 
   try {
     for (const [name, generatedConfig] of Object.entries(generated)) {
