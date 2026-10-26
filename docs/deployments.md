@@ -18,7 +18,8 @@ yet written down, not that it did not happen — `gh run list --workflow=deploy.
 source of truth.
 
 Entries that name `thonbecker-public-chat` are historical version IDs from deploys that included
-that Worker. The package has been removed, and current deploys omit it.
+that Worker. The package has been removed. A real `pnpm deploy` deletes that Worker after detaching
+its custom domain, and leaves every other Worker in place.
 
 ## 2026-09-26 23:49 UTC — CI run 36280605434
 
