@@ -37,8 +37,7 @@ The custom logo appears in the app chrome, sign-in screens, and browser tab on e
 | `resources` | Blueprint/avatar KV and blueprint-content R2 | `null` to provision or explicit IDs/names to reuse |
 | `observability` | Worker telemetry | Structured logs, invocation logs, traces, and sampling; see the [observability guide](observability.md) |
 
-The optional `personalWeb.booking` integration describes the PersonalWeb origin and booking API paths
-used by the private Workshop booking panel and the public read-only availability Worker. For this
+`personalWeb.baseUrl` is the PersonalWeb origin the private Workshop booking panel calls. For this
 deployment the origin is `https://app.thonbecker.biz`; do not use the public `booking.thonbecker.biz`
 hostname. The Workshop forwards the user's Cloudflare Access JWT to Spring, so
 the Spring issuer, audience, and administrator email must match the `access` configuration exactly.

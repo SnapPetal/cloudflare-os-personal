@@ -24,7 +24,6 @@ const validConfig: DeploymentConfig = {
   workers: {
     router: { name: "acme-cloudflare-os", route: { customDomain: "os.example.com" } },
     workshop: { name: "acme-cloudflare-os-backend" },
-    publicChat: { name: "acme-cloudflare-os-chat", route: { customDomain: "chat.example.com" } },
     s3vExplorer: { name: "acme-cloudflare-os-vectors", route: { workersDev: false } },
     familyQuest: { name: "acme-cloudflare-os-quest", route: { customDomain: "quest.example.com" } },
     context: { name: "acme-cloudflare-os-context" },
@@ -51,9 +50,6 @@ const validConfig: DeploymentConfig = {
   s3vExplorer: { region: "us-east-1", vectorBucketName: "acme-vectors" },
   personalWeb: {
     baseUrl: "https://app.example.com",
-    booking: {
-      availabilityPath: "/booking/api/availability",
-    },
   },
   customGatekeeper: { name: "Acme", message: "Use the company handbook." },
   errorReporting: { enabled: true, environment: "production", release: "abc123" },
@@ -89,7 +85,6 @@ async function baseConfigs(): Promise<BaseConfigs> {
   return {
     router: await baseConfig("../cloudflare-os/packages/router/wrangler.jsonc"),
     workshop: await baseConfig("../cloudflare-os/packages/workshop-backend/wrangler.jsonc"),
-    publicChat: await baseConfig("../packages/public-chat/wrangler.jsonc"),
     s3vExplorer: await baseConfig("../packages/s3v-explorer/wrangler.jsonc"),
     familyQuest: await baseConfig("../packages/family-quest/wrangler.jsonc"),
     context: await baseConfig("../cloudflare-os/packages/gatekeeper-context/wrangler.jsonc"),
@@ -220,8 +215,6 @@ test("generates Access-mode Workshop, Context, and custom Gatekeeper configs", a
   assert.equal(vars.CF_AI_GATEWAY, "cloudflare-os");
   assert.equal(vars.CF_AI_GATEWAY_PROVIDERS, "anthropic,cloudflare");
   assert.deepEqual(generated.workshop.ai, { binding: "WORKERS_AI" });
-  assert.deepEqual(generated.publicChat.ai, { binding: "AI" });
-  assert.equal(generated.publicChat.vars?.AI_MODEL, "@cf/meta/llama-3.3-70b-instruct-fp8-fast");
   assert.deepEqual(generated.workshop.services, [
     {
       binding: "ERROR_REPORTER",
@@ -360,7 +353,7 @@ test("keeps every Worker behind the router off the public internet", async () =>
   const workers = Object.entries(generated) as [string, ProdWranglerConfig][];
 
   for (const [name, worker] of workers) {
-    if (name !== "router" && name !== "publicChat" && name !== "familyQuest") {
+    if (name !== "router" && name !== "familyQuest") {
       assert.equal(worker.workers_dev, false, `${name} answers on workers.dev`);
       assert.equal(worker.routes, undefined, `${name} carries a public route`);
     }
@@ -692,7 +685,6 @@ test("deployment.jsonc owns workers_dev, invocation logs, traces, and the compat
   const bases = await baseConfigs();
   const generated = generateConfigs(deployment, bases);
   const owned = [
-    ["packages/public-chat", "publicChat", bases.publicChat, generated.publicChat],
     ["packages/s3v-explorer", "s3vExplorer", bases.s3vExplorer, generated.s3vExplorer],
     ["packages/family-quest", "familyQuest", bases.familyQuest, generated.familyQuest],
     ["packages/custom-gatekeeper", "customGatekeeper", bases.customGatekeeper, generated.customGatekeeper],
@@ -739,7 +731,6 @@ test("deployment.jsonc owns workers_dev, invocation logs, traces, and the compat
 
   const commands = buildCommands(deployment).map(({ args }) => args.join(" "));
   for (const name of [
-    deployment.workers.publicChat.name,
     deployment.workers.s3vExplorer.name,
     deployment.workers.familyQuest.name,
     deployment.workers.customGatekeeper.name,

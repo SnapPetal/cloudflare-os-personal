@@ -25,10 +25,6 @@
     },
     // The Workshop backend. No public route: the router reaches it over a service binding.
     "workshop": { "name": "thonbecker-personal-os" },
-    "publicChat": {
-      "name": "thonbecker-public-chat",
-      "route": { "customDomain": "chat.thonbecker.biz" }
-    },
     "s3vExplorer": {
       "name": "thonbecker-s3v-explorer",
       "route": { "workersDev": false }
@@ -107,13 +103,10 @@
     "vectorBucketName": "thonbecker-vectors"
   },
 
-  // PersonalWeb remains the source of truth for booking data and business rules. Cloudflare OS
-  // owns the private operator UI/proxy and the public read-only availability consumer.
+  // PersonalWeb remains the source of truth for booking data and business rules. The Workshop
+  // proxies private booking administration to this origin.
   "personalWeb": {
-    "baseUrl": "https://app.thonbecker.biz",
-    "booking": {
-      "availabilityPath": "/booking/api/availability"
-    }
+    "baseUrl": "https://app.thonbecker.biz"
   },
 
   // Displayed to agents when the example custom integration is enabled in /admin.

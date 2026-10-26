@@ -19,7 +19,7 @@
     "sync:upstream": "node scripts/sync-upstream.ts",
     "lint:custom": "oxlint scripts packages",
     "lint:custom:fix": "oxlint --fix scripts packages",
-    "types:check": "pnpm --filter thonbecker-personal-os-gatekeeper types:check && pnpm --filter thonbecker-personal-os-errors types:check && pnpm --filter thonbecker-public-chat types:check && pnpm --filter thonbecker-s3v-explorer types:check && pnpm --filter thonbecker-family-quest types:check"
+    "types:check": "pnpm --filter thonbecker-personal-os-gatekeeper types:check && pnpm --filter thonbecker-personal-os-errors types:check && pnpm --filter thonbecker-s3v-explorer types:check && pnpm --filter thonbecker-family-quest types:check"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "catalog:",
