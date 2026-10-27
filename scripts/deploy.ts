@@ -932,8 +932,6 @@ function reportAiGateway(config: DeploymentConfig): void {
 export const RETIRED_WORKERS = ["thonbecker-public-chat"] as const;
 
 const workerNamePattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-/** Domain ids on `GET /accounts/{account_id}/workers/domains` are 32 hex characters. */
-const domainIdPattern = /^[a-f\d]{32}$/i;
 const cloudflareApi = "https://api.cloudflare.com/client/v4";
 /** Wrangler treats these as "this Worker is not there". */
 const workerNotFoundCodes = new Set([10007, 10090]);
@@ -1082,9 +1080,9 @@ export function workerDomainsFromList(workerName: string, body: WorkerDomainList
     const id = typeof item.id === "string" ? item.id : "";
     const hostname = typeof item.hostname === "string" ? item.hostname : "";
     const problems: string[] = [];
-    if (!domainIdPattern.test(id)) {
-      problems.push(id ? "id is not a 32-character hex domain id" : "id is missing");
-    }
+    // Live domain ids are not always 32 hex characters. Any non-empty string is an id.
+    // The retired Worker name and the allowlist decide what may be detached.
+    if (!id) problems.push("id is missing");
     if (!hostname || /[\s/\\]/.test(hostname)) {
       problems.push(hostname ? "hostname is not a hostname" : "hostname is missing");
     }
@@ -1097,6 +1095,11 @@ export function workerDomainsFromList(workerName: string, body: WorkerDomainList
     found.push({ id, hostname, service: workerName });
   }
   return found;
+}
+
+/** `DELETE /accounts/{account_id}/workers/domains/{domain_id}`. The id is one path segment. */
+export function workerDomainDeletePath(accountId: string, domainId: string): string {
+  return `/accounts/${accountId}/workers/domains/${encodeURIComponent(domainId)}`;
 }
 
 /** The next 1-based page, or undefined when this page is the last one. */
@@ -1194,17 +1197,18 @@ export function cloudflareRetirementClient(
       if (!workerNamePattern.test(domain.service)) {
         throw new Error(`Refusing to detach a domain for ${domain.service}.`);
       }
-      if (!domainIdPattern.test(domain.id)) {
-        throw new Error(`Refusing to detach ${domain.hostname}: its id is not a domain id.`);
+      if (!domain.id) {
+        throw new Error(`Refusing to detach ${domain.hostname}: its id is missing.`);
       }
       // Detach the custom domain before the Worker is deleted. This is the Workers Domains
-      // API, and it is what releases the Worker-managed DNS record. The id came from
-      // GET /accounts/{account_id}/workers/domains and is checked against the retired
-      // service before this runs.
+      // API, and it is what releases the Worker-managed DNS record. `?force=true` on script
+      // delete only skips service-binding and Durable Object checks; it does not remove
+      // custom domains. The id came from GET /accounts/{account_id}/workers/domains and is
+      // checked against the retired service before this runs.
       const { status, body } = await cloudflareRequest(
         accountId,
         token,
-        `/accounts/${accountId}/workers/domains/${domain.id}`,
+        workerDomainDeletePath(accountId, domain.id),
         { method: "DELETE" },
       );
       const kind = cloudflareResultKind(status, body);
