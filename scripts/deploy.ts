@@ -924,12 +924,16 @@ function reportAiGateway(config: DeploymentConfig): void {
  *
  * `thonbecker-public-chat` served chat.thonbecker.biz. Booking chat now lives in PersonalWeb, and
  * the Worker was removed from this repo without a way for deploy to delete what Cloudflare still
- * had. The next deploy detaches that custom domain (and its Worker DNS record) and then deletes
- * the Worker. A later deploy finds it already gone and does nothing.
+ * had. A real deploy lists that custom domain with `GET /accounts/{account_id}/workers/domains`,
+ * detaches it (which releases the Worker DNS record), and then deletes the Worker. A later deploy
+ * finds it already gone and does nothing. Cleanup runs after the other Workers upload, so a
+ * failure there does not skip those deploys.
  */
 export const RETIRED_WORKERS = ["thonbecker-public-chat"] as const;
 
 const workerNamePattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+/** Domain ids on `GET /accounts/{account_id}/workers/domains` are 32 hex characters. */
+const domainIdPattern = /^[a-f\d]{32}$/i;
 const cloudflareApi = "https://api.cloudflare.com/client/v4";
 /** Wrangler treats these as "this Worker is not there". */
 const workerNotFoundCodes = new Set([10007, 10090]);
@@ -1048,6 +1052,62 @@ export function cloudflareResultKind(
   return missing ? "missing" : "error";
 }
 
+/**
+ * One page of `GET /accounts/{account_id}/workers/domains`.
+ * `result_info.page` is 1-based. Each result item is
+ * `{ id, cert_id, enabled, environment, hostname, previews_enabled, service, zone_id, zone_name }`.
+ */
+export interface WorkerDomainListPage {
+  result?: unknown;
+  result_info?: { total_pages?: number };
+}
+
+/**
+ * Custom domains for `workerName` from one Workers Domains list page.
+ * Reads `id`, `hostname`, and `service`. Items for any other service are ignored.
+ * `cert_id`, `enabled`, `environment`, `previews_enabled`, `zone_id`, and `zone_name` are not used.
+ */
+export function workerDomainsFromList(workerName: string, body: WorkerDomainListPage): WorkerDomain[] {
+  const records = body.result;
+  if (!Array.isArray(records)) {
+    throw new Error(`Could not list custom domains for ${workerName}: result was not an array.`);
+  }
+  const found: WorkerDomain[] = [];
+  for (const record of records) {
+    if (record === null || typeof record !== "object") {
+      throw new Error(`Could not list custom domains for ${workerName}: a result item was not an object.`);
+    }
+    const item = record as Record<string, unknown>;
+    if (item.service !== workerName) continue;
+    const id = typeof item.id === "string" ? item.id : "";
+    const hostname = typeof item.hostname === "string" ? item.hostname : "";
+    const problems: string[] = [];
+    if (!domainIdPattern.test(id)) {
+      problems.push(id ? "id is not a 32-character hex domain id" : "id is missing");
+    }
+    if (!hostname || /[\s/\\]/.test(hostname)) {
+      problems.push(hostname ? "hostname is not a hostname" : "hostname is missing");
+    }
+    if (problems.length > 0) {
+      const present = Object.keys(item).toSorted().join(", ") || "(none)";
+      throw new Error(
+        `Custom domain for ${workerName} could not be parsed (${problems.join("; ")}). Result fields: ${present}.`,
+      );
+    }
+    found.push({ id, hostname, service: workerName });
+  }
+  return found;
+}
+
+/** The next 1-based page, or undefined when this page is the last one. */
+export function nextWorkerDomainPage(page: number, body: WorkerDomainListPage): number | undefined {
+  const records = body.result;
+  if (!Array.isArray(records) || records.length === 0) return undefined;
+  const totalPages = body.result_info?.total_pages;
+  if (totalPages === undefined || page >= totalPages) return undefined;
+  return page + 1;
+}
+
 function cloudflareFailure(body: CloudflareEnvelope<unknown>): string {
   const message = (body.errors ?? [])
     .map((error) => error.message)
@@ -1096,7 +1156,6 @@ export function cloudflareRetirementClient(
   requireAccountId(accountId);
   const token = env.CLOUDFLARE_API_TOKEN;
   if (!token) throw new Error("CLOUDFLARE_API_TOKEN is required to delete retired Workers.");
-  const domainIdPattern = /^[a-f\d]{32}$/i;
 
   return {
     async getWorker(name) {
@@ -1109,36 +1168,27 @@ export function cloudflareRetirementClient(
     },
     async listDomains(name) {
       const found: WorkerDomain[] = [];
-      // Same records route Wrangler uses when it reads a Worker's custom domains. Page 0 is that
-      // route's first page. A record for any other service is ignored here and refused again
+      // Documented list: GET /accounts/{account_id}/workers/domains?service=...
+      // Pages are 1-based. A domain for any other service is ignored here and refused again
       // before a detach.
-      for (let page = 0; page < 20; page++) {
+      for (let page = 1; page <= 20; page++) {
         const params = new URLSearchParams({
           service: name,
           environment: "production",
           page: String(page),
           per_page: "100",
         });
-        const { status, body } = await cloudflareRequest<WorkerDomain[]>(
-          accountId, token, `/accounts/${accountId}/workers/domains/records?${params}`);
+        const { status, body } = await cloudflareRequest<unknown[]>(
+          accountId, token, `/accounts/${accountId}/workers/domains?${params}`);
         const kind = cloudflareResultKind(status, body);
         if (kind === "missing") return found;
         if (kind === "error") {
           throw new Error(`Could not list custom domains for ${name}: ${cloudflareFailure(body)}`);
         }
-        const records = body.result ?? [];
-        if (!Array.isArray(records)) throw new Error(`Could not list custom domains for ${name}.`);
-        for (const record of records) {
-          if (record.service !== name) continue;
-          if (!domainIdPattern.test(record.id) || !record.hostname) {
-            throw new Error(`Custom domain for ${name} is missing an id or hostname.`);
-          }
-          found.push({ id: record.id, hostname: record.hostname, service: record.service });
-        }
-        const totalPages = body.result_info?.total_pages;
-        if (records.length === 0 || totalPages === undefined || page + 1 >= totalPages) break;
+        found.push(...workerDomainsFromList(name, body));
+        if (nextWorkerDomainPage(page, body) === undefined) return found;
       }
-      return found;
+      throw new Error(`Could not list every custom domain for ${name}: more than 20 pages.`);
     },
     async detachDomain(domain) {
       if (!workerNamePattern.test(domain.service)) {
@@ -1148,8 +1198,9 @@ export function cloudflareRetirementClient(
         throw new Error(`Refusing to detach ${domain.hostname}: its id is not a domain id.`);
       }
       // Detach the custom domain before the Worker is deleted. This is the Workers Domains
-      // API, and it is what releases the Worker-managed DNS record. The id came from the
-      // records list above and is checked against the retired service before this runs.
+      // API, and it is what releases the Worker-managed DNS record. The id came from
+      // GET /accounts/{account_id}/workers/domains and is checked against the retired
+      // service before this runs.
       const { status, body } = await cloudflareRequest(
         accountId,
         token,
@@ -1195,6 +1246,28 @@ export function familyQuestDeployMode(argv: readonly string[]): FamilyQuestDeplo
   return "with-family-quest";
 }
 
+/**
+ * Upload Workers before retired-Worker cleanup. A cleanup failure still fails the process,
+ * and the message says the other Workers were already deployed. `--check` never calls the API.
+ */
+export async function deployWorkersThenRetire(input: {
+  check: boolean;
+  deploy: () => Promise<void>;
+  retire: () => Promise<unknown>;
+}): Promise<void> {
+  await input.deploy();
+  if (input.check) return;
+  try {
+    await input.retire();
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `The other Workers were deployed. Retired Worker cleanup failed: ${detail}`,
+      { cause: error },
+    );
+  }
+}
+
 function runFamilyQuestPredeploy(accountId: string): void {
   runCommand(
     "bash",
@@ -1227,54 +1300,57 @@ async function main(): Promise<void> {
   // The API itself runs only on a real deploy: pull-request `pnpm check` has no token and must not
   // delete anything. Repeating it is safe; a Worker that is already gone does not error.
   assertRetirementAllowlist(RETIRED_WORKERS, activeWorkers);
-  if (!check) {
-    await retireWorkers({
-      retired: RETIRED_WORKERS,
-      active: activeWorkers,
-      client: cloudflareRetirementClient(config.accountId),
-    });
-  }
 
   try {
-    for (const [name, generatedConfig] of Object.entries(generated)) {
-      await writeFile(
-        generatedPaths[name as keyof typeof generatedPaths],
-        JSON.stringify(generatedConfig, null, 2) + "\n");
-    }
-    // Family Quest-only uploads bundle from source. Skip the OS builds so a migration
-    // failure in the previous workflow step is not followed by rebuilding every Worker.
-    if (mode !== "only-family-quest") {
-      if (check) run(["test"]);
-      build(config);
-    }
-    const deployArgs = check ? ["--dry-run"] : [];
-    const deployed: Array<[worker: string, versionId: string]> = [];
-    const deployOne = (dir: string) => {
-      const version = deployWorker(dir, deployArgs);
-      if (version) deployed.push(version);
-    };
-    if (mode !== "only-family-quest") {
-      if (config.errorReporting.enabled) {
-        deployOne(packageDirs.errorReporter);
-      }
-      deployOne(packageDirs.s3vExplorer);
-      deployOne(packageDirs.context);
-      deployOne(packageDirs.scheduler);
-      deployOne(packageDirs.customGatekeeper);
-      deployOne(packageDirs.workshop);
-      // Last of the OS: it binds every one of the above.
-      deployOne(packageDirs.router);
-    }
-    if (mode !== "skip-family-quest") {
-      // After the other Workers. Family Quest is not on the OS request path, so a failure
-      // here leaves those Workers already updated. D1 migrations run first on a full
-      // `pnpm deploy`. The Deploy workflow runs that script as its own step, between
-      // `--skip-family-quest` and `--only-family-quest`, so this branch does not repeat it.
-      if (!check && mode === "with-family-quest") runFamilyQuestPredeploy(config.accountId);
-      deployOne(packageDirs.familyQuest);
-    }
-    // A dry run reports no versions, and an entry with holes in it is worse than none.
-    if (!check && deployed.length > 0) await appendDeploymentLog(deployed);
+    await deployWorkersThenRetire({
+      check,
+      deploy: async () => {
+        for (const [name, generatedConfig] of Object.entries(generated)) {
+          await writeFile(
+            generatedPaths[name as keyof typeof generatedPaths],
+            JSON.stringify(generatedConfig, null, 2) + "\n");
+        }
+        // Family Quest-only uploads bundle from source. Skip the OS builds so a migration
+        // failure in the previous workflow step is not followed by rebuilding every Worker.
+        if (mode !== "only-family-quest") {
+          if (check) run(["test"]);
+          build(config);
+        }
+        const deployArgs = check ? ["--dry-run"] : [];
+        const deployed: Array<[worker: string, versionId: string]> = [];
+        const deployOne = (dir: string) => {
+          const version = deployWorker(dir, deployArgs);
+          if (version) deployed.push(version);
+        };
+        if (mode !== "only-family-quest") {
+          if (config.errorReporting.enabled) {
+            deployOne(packageDirs.errorReporter);
+          }
+          deployOne(packageDirs.s3vExplorer);
+          deployOne(packageDirs.context);
+          deployOne(packageDirs.scheduler);
+          deployOne(packageDirs.customGatekeeper);
+          deployOne(packageDirs.workshop);
+          // Last of the OS: it binds every one of the above.
+          deployOne(packageDirs.router);
+        }
+        if (mode !== "skip-family-quest") {
+          // After the other Workers. Family Quest is not on the OS request path, so a failure
+          // here leaves those Workers already updated. D1 migrations run first on a full
+          // `pnpm deploy`. The Deploy workflow runs that script as its own step, between
+          // `--skip-family-quest` and `--only-family-quest`, so this branch does not repeat it.
+          if (!check && mode === "with-family-quest") runFamilyQuestPredeploy(config.accountId);
+          deployOne(packageDirs.familyQuest);
+        }
+        // A dry run reports no versions, and an entry with holes in it is worse than none.
+        if (!check && deployed.length > 0) await appendDeploymentLog(deployed);
+      },
+      retire: () => retireWorkers({
+        retired: RETIRED_WORKERS,
+        active: activeWorkers,
+        client: cloudflareRetirementClient(config.accountId),
+      }),
+    });
   } finally {
     await Promise.all(Object.values(generatedPaths).map((path) => rm(path, { force: true })));
   }

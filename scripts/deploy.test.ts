@@ -10,11 +10,14 @@ import {
   cloudflareResultKind,
   COMPATIBILITY_DATE,
   deploymentLogEntry,
+  deployWorkersThenRetire,
   familyQuestDeployMode,
   generateConfigs,
+  nextWorkerDomainPage,
   retireWorkers,
   RETIRED_WORKERS,
   validateConfig,
+  workerDomainsFromList,
 } from "./deploy.ts";
 import type { RetirementClient, WorkerDomain } from "./deploy.ts";
 import type {
@@ -944,6 +947,113 @@ test("does not detach a domain that belongs to another Worker", async () => {
     /belongs to thonbecker-personal-os/,
   );
   assert.deepEqual(calls, []);
+});
+
+test("parses a Workers Domains list response and keeps only the retired service", () => {
+  // Shape of GET /accounts/{account_id}/workers/domains?service=...
+  // https://developers.cloudflare.com/api/resources/workers/subresources/domains/methods/list/
+  const page = {
+    success: true,
+    errors: [],
+    messages: [],
+    result: [
+      {
+        id: "dbe10b4bc17c295377eabd600e1787fd",
+        cert_id: "9fdf92c8-64c2-4a3d-b1af-e15304961145",
+        enabled: true,
+        environment: "production",
+        hostname: "chat.thonbecker.biz",
+        previews_enabled: false,
+        service: "thonbecker-public-chat",
+        zone_id: "593c9c94de529bbbfaac7c53ced0447d",
+        zone_name: "thonbecker.biz",
+      },
+      {
+        id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        cert_id: "11111111-1111-4111-8111-111111111111",
+        enabled: true,
+        environment: "production",
+        hostname: "os.thonbecker.biz",
+        previews_enabled: false,
+        service: "thonbecker-personal-os",
+        zone_id: "593c9c94de529bbbfaac7c53ced0447d",
+        zone_name: "thonbecker.biz",
+      },
+    ],
+    result_info: { count: 2, page: 1, per_page: 20, total_count: 2, total_pages: 1 },
+  };
+
+  assert.deepEqual(workerDomainsFromList("thonbecker-public-chat", page), [{
+    id: "dbe10b4bc17c295377eabd600e1787fd",
+    hostname: "chat.thonbecker.biz",
+    service: "thonbecker-public-chat",
+  }]);
+  assert.equal(nextWorkerDomainPage(1, page), undefined);
+
+  const continued = {
+    result: page.result,
+    result_info: { total_pages: 2 },
+  };
+  assert.equal(nextWorkerDomainPage(1, continued), 2);
+  assert.equal(nextWorkerDomainPage(2, continued), undefined);
+});
+
+test("a Workers Domains item for the retired service names the fields it failed to parse", () => {
+  assert.throws(
+    () => workerDomainsFromList("thonbecker-public-chat", {
+      result: [{
+        id: "not-a-domain-id",
+        service: "thonbecker-public-chat",
+        zone_name: "thonbecker.biz",
+        cert_id: "9fdf92c8-64c2-4a3d-b1af-e15304961145",
+      }],
+    }),
+    /could not be parsed \(id is not a 32-character hex domain id; hostname is missing\)\. Result fields: cert_id, id, service, zone_name\./,
+  );
+});
+
+test("a retired-worker failure still deploys the other Workers, then reports the cleanup error", async () => {
+  const order: string[] = [];
+  await assert.rejects(
+    () => deployWorkersThenRetire({
+      check: false,
+      deploy: async () => {
+        order.push("deploy");
+      },
+      retire: async () => {
+        order.push("retire");
+        throw new Error("Custom domain for thonbecker-public-chat could not be parsed (hostname is missing).");
+      },
+    }),
+    /The other Workers were deployed\. Retired Worker cleanup failed: Custom domain for thonbecker-public-chat could not be parsed \(hostname is missing\)\./,
+  );
+  assert.deepEqual(order, ["deploy", "retire"]);
+
+  await assert.rejects(
+    () => deployWorkersThenRetire({
+      check: false,
+      deploy: async () => {
+        throw new Error("wrangler failed");
+      },
+      retire: async () => {
+        order.push("retire-after-failed-deploy");
+      },
+    }),
+    /wrangler failed/,
+  );
+  assert.deepEqual(order, ["deploy", "retire"]);
+
+  const checkOrder: string[] = [];
+  await deployWorkersThenRetire({
+    check: true,
+    deploy: async () => {
+      checkOrder.push("deploy");
+    },
+    retire: async () => {
+      checkOrder.push("retire");
+    },
+  });
+  assert.deepEqual(checkOrder, ["deploy"]);
 });
 
 test("treats a missing Worker as success and any other API failure as an error", () => {
