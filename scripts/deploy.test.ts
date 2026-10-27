@@ -17,6 +17,7 @@ import {
   retireWorkers,
   RETIRED_WORKERS,
   validateConfig,
+  workerDomainDeletePath,
   workerDomainsFromList,
 } from "./deploy.ts";
 import type { RetirementClient, WorkerDomain } from "./deploy.ts";
@@ -958,7 +959,7 @@ test("parses a Workers Domains list response and keeps only the retired service"
     messages: [],
     result: [
       {
-        id: "dbe10b4bc17c295377eabd600e1787fd",
+        id: "c6fd2a10-7b4e-4e1a-9c3d-0a1b2c3d4e5f",
         cert_id: "9fdf92c8-64c2-4a3d-b1af-e15304961145",
         enabled: true,
         environment: "production",
@@ -984,10 +985,18 @@ test("parses a Workers Domains list response and keeps only the retired service"
   };
 
   assert.deepEqual(workerDomainsFromList("thonbecker-public-chat", page), [{
-    id: "dbe10b4bc17c295377eabd600e1787fd",
+    id: "c6fd2a10-7b4e-4e1a-9c3d-0a1b2c3d4e5f",
     hostname: "chat.thonbecker.biz",
     service: "thonbecker-public-chat",
   }]);
+  assert.equal(
+    workerDomainDeletePath("0123456789abcdef0123456789abcdef", "c6fd2a10-7b4e-4e1a-9c3d-0a1b2c3d4e5f"),
+    "/accounts/0123456789abcdef0123456789abcdef/workers/domains/c6fd2a10-7b4e-4e1a-9c3d-0a1b2c3d4e5f",
+  );
+  assert.equal(
+    workerDomainDeletePath("0123456789abcdef0123456789abcdef", "id/with space"),
+    "/accounts/0123456789abcdef0123456789abcdef/workers/domains/id%2Fwith%20space",
+  );
   assert.equal(nextWorkerDomainPage(1, page), undefined);
 
   const continued = {
@@ -1008,7 +1017,7 @@ test("a Workers Domains item for the retired service names the fields it failed 
         cert_id: "9fdf92c8-64c2-4a3d-b1af-e15304961145",
       }],
     }),
-    /could not be parsed \(id is not a 32-character hex domain id; hostname is missing\)\. Result fields: cert_id, id, service, zone_name\./,
+    /could not be parsed \(hostname is missing\)\. Result fields: cert_id, id, service, zone_name\./,
   );
 });
 
