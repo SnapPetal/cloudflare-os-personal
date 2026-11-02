@@ -3,14 +3,24 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { parse, type ParseError } from "jsonc-parser";
 import {
+  activeWorkerNames,
   aiGatewayPlan,
+  assertRetirementAllowlist,
   buildCommands,
+  cloudflareResultKind,
   COMPATIBILITY_DATE,
   deploymentLogEntry,
+  deployWorkersThenRetire,
   familyQuestDeployMode,
   generateConfigs,
+  nextWorkerDomainPage,
+  retireWorkers,
+  RETIRED_WORKERS,
   validateConfig,
+  workerDomainDeletePath,
+  workerDomainsFromList,
 } from "./deploy.ts";
+import type { RetirementClient, WorkerDomain } from "./deploy.ts";
 import type {
   BaseConfigs,
   DeploymentConfig,
@@ -761,6 +771,322 @@ test("Deploy workflow applies Family Quest migrations before that Worker deploys
   assert.equal(workflow.includes("secret put"), false);
   assert.match(script, /wrangler d1 migrations apply thonbecker-family-quest --remote/);
   assert.equal(script.includes("secret put"), false);
+});
+
+function retirementAccount(seed: {
+  workers: readonly string[];
+  domains: readonly WorkerDomain[];
+}): {
+  client: RetirementClient;
+  calls: string[];
+  workers: Set<string>;
+  domains: WorkerDomain[];
+} {
+  const workers = new Set(seed.workers);
+  const domains = seed.domains.map((domain) => ({ ...domain }));
+  const calls: string[] = [];
+  const client: RetirementClient = {
+    async getWorker(name) {
+      calls.push(`get ${name}`);
+      return workers.has(name);
+    },
+    async listDomains(name) {
+      calls.push(`list ${name}`);
+      return domains.filter((domain) => domain.service === name);
+    },
+    async detachDomain(domain) {
+      calls.push(`detach ${domain.service} ${domain.hostname}`);
+      const index = domains.findIndex((item) => item.id === domain.id);
+      if (index >= 0) domains.splice(index, 1);
+    },
+    async deleteWorker(name) {
+      calls.push(`delete ${name}`);
+      workers.delete(name);
+    },
+  };
+  return { client, calls, workers, domains };
+}
+
+const keptWorkers = [
+  "thonbecker-personal-os",
+  "thonbecker-personal-os-router",
+  "thonbecker-family-quest",
+];
+
+test("deletes only the retired Worker, and detaches its custom domain first", async () => {
+  assert.deepEqual(RETIRED_WORKERS, ["thonbecker-public-chat"]);
+  const account = retirementAccount({
+    workers: ["thonbecker-public-chat", ...keptWorkers],
+    domains: [
+      { id: "a".repeat(32), hostname: "chat.thonbecker.biz", service: "thonbecker-public-chat" },
+      { id: "b".repeat(32), hostname: "os.thonbecker.biz", service: "thonbecker-personal-os" },
+      { id: "c".repeat(32), hostname: "quest.thonbecker.biz", service: "thonbecker-family-quest" },
+    ],
+  });
+
+  const results = await retireWorkers({
+    retired: RETIRED_WORKERS,
+    active: keptWorkers,
+    client: account.client,
+  });
+
+  assert.deepEqual(results, [{
+    name: "thonbecker-public-chat",
+    outcome: "deleted",
+    detachedHostnames: ["chat.thonbecker.biz"],
+  }]);
+  assert.deepEqual(account.calls, [
+    "get thonbecker-public-chat",
+    "list thonbecker-public-chat",
+    "detach thonbecker-public-chat chat.thonbecker.biz",
+    "delete thonbecker-public-chat",
+  ]);
+  assert.equal(account.workers.has("thonbecker-public-chat"), false);
+  for (const name of keptWorkers) assert.equal(account.workers.has(name), true, name);
+  assert.deepEqual(account.domains.map((domain) => domain.hostname), [
+    "os.thonbecker.biz",
+    "quest.thonbecker.biz",
+  ]);
+});
+
+test("a retired Worker that is already gone makes no detach or delete request", async () => {
+  const account = retirementAccount({
+    workers: keptWorkers,
+    domains: [
+      { id: "b".repeat(32), hostname: "os.thonbecker.biz", service: "thonbecker-personal-os" },
+    ],
+  });
+
+  const first = await retireWorkers({
+    retired: RETIRED_WORKERS,
+    active: keptWorkers,
+    client: account.client,
+  });
+  assert.deepEqual(first, [{
+    name: "thonbecker-public-chat",
+    outcome: "absent",
+    detachedHostnames: [],
+  }]);
+  assert.deepEqual(account.calls, ["get thonbecker-public-chat"]);
+  assert.deepEqual(account.domains.map((domain) => domain.hostname), ["os.thonbecker.biz"]);
+
+  const present = retirementAccount({
+    workers: ["thonbecker-public-chat", ...keptWorkers],
+    domains: [
+      { id: "a".repeat(32), hostname: "chat.thonbecker.biz", service: "thonbecker-public-chat" },
+    ],
+  });
+  await retireWorkers({
+    retired: RETIRED_WORKERS,
+    active: keptWorkers,
+    client: present.client,
+  });
+  present.calls.length = 0;
+  const second = await retireWorkers({
+    retired: RETIRED_WORKERS,
+    active: keptWorkers,
+    client: present.client,
+  });
+  assert.equal(second[0]?.outcome, "absent");
+  assert.deepEqual(present.calls, ["get thonbecker-public-chat"]);
+});
+
+test("refuses to delete a Worker that is not on the allowlist or is still configured", async () => {
+  const account = retirementAccount({
+    workers: ["thonbecker-personal-os", "thonbecker-public-chat"],
+    domains: [],
+  });
+
+  await assert.rejects(
+    () => retireWorkers({
+      retired: ["thonbecker-personal-os"],
+      active: [],
+      client: account.client,
+    }),
+    /not on the retired Worker allowlist/,
+  );
+  await assert.rejects(
+    () => retireWorkers({
+      retired: ["thonbecker-public-chat"],
+      active: ["thonbecker-public-chat"],
+      client: account.client,
+    }),
+    /still an active Worker/,
+  );
+  assert.deepEqual(account.calls, []);
+  assert.equal(account.workers.has("thonbecker-personal-os"), true);
+  assert.equal(account.workers.has("thonbecker-public-chat"), true);
+
+  assert.throws(
+    () => assertRetirementAllowlist(["thonbecker-public-chat", "thonbecker-public-chat"], []),
+    /more than once/,
+  );
+});
+
+test("does not detach a domain that belongs to another Worker", async () => {
+  const calls: string[] = [];
+  const client: RetirementClient = {
+    async getWorker() {
+      return true;
+    },
+    async listDomains() {
+      return [
+        { id: "a".repeat(32), hostname: "chat.thonbecker.biz", service: "thonbecker-public-chat" },
+        { id: "b".repeat(32), hostname: "os.thonbecker.biz", service: "thonbecker-personal-os" },
+      ];
+    },
+    async detachDomain(domain) {
+      calls.push(`detach ${domain.hostname}`);
+    },
+    async deleteWorker(name) {
+      calls.push(`delete ${name}`);
+    },
+  };
+
+  await assert.rejects(
+    () => retireWorkers({ retired: RETIRED_WORKERS, active: [], client }),
+    /belongs to thonbecker-personal-os/,
+  );
+  assert.deepEqual(calls, []);
+});
+
+test("parses a Workers Domains list response and keeps only the retired service", () => {
+  // Shape of GET /accounts/{account_id}/workers/domains?service=...
+  // https://developers.cloudflare.com/api/resources/workers/subresources/domains/methods/list/
+  const page = {
+    success: true,
+    errors: [],
+    messages: [],
+    result: [
+      {
+        id: "c6fd2a10-7b4e-4e1a-9c3d-0a1b2c3d4e5f",
+        cert_id: "9fdf92c8-64c2-4a3d-b1af-e15304961145",
+        enabled: true,
+        environment: "production",
+        hostname: "chat.thonbecker.biz",
+        previews_enabled: false,
+        service: "thonbecker-public-chat",
+        zone_id: "593c9c94de529bbbfaac7c53ced0447d",
+        zone_name: "thonbecker.biz",
+      },
+      {
+        id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        cert_id: "11111111-1111-4111-8111-111111111111",
+        enabled: true,
+        environment: "production",
+        hostname: "os.thonbecker.biz",
+        previews_enabled: false,
+        service: "thonbecker-personal-os",
+        zone_id: "593c9c94de529bbbfaac7c53ced0447d",
+        zone_name: "thonbecker.biz",
+      },
+    ],
+    result_info: { count: 2, page: 1, per_page: 20, total_count: 2, total_pages: 1 },
+  };
+
+  assert.deepEqual(workerDomainsFromList("thonbecker-public-chat", page), [{
+    id: "c6fd2a10-7b4e-4e1a-9c3d-0a1b2c3d4e5f",
+    hostname: "chat.thonbecker.biz",
+    service: "thonbecker-public-chat",
+  }]);
+  assert.equal(
+    workerDomainDeletePath("0123456789abcdef0123456789abcdef", "c6fd2a10-7b4e-4e1a-9c3d-0a1b2c3d4e5f"),
+    "/accounts/0123456789abcdef0123456789abcdef/workers/domains/c6fd2a10-7b4e-4e1a-9c3d-0a1b2c3d4e5f",
+  );
+  assert.equal(
+    workerDomainDeletePath("0123456789abcdef0123456789abcdef", "id/with space"),
+    "/accounts/0123456789abcdef0123456789abcdef/workers/domains/id%2Fwith%20space",
+  );
+  assert.equal(nextWorkerDomainPage(1, page), undefined);
+
+  const continued = {
+    result: page.result,
+    result_info: { total_pages: 2 },
+  };
+  assert.equal(nextWorkerDomainPage(1, continued), 2);
+  assert.equal(nextWorkerDomainPage(2, continued), undefined);
+});
+
+test("a Workers Domains item for the retired service names the fields it failed to parse", () => {
+  assert.throws(
+    () => workerDomainsFromList("thonbecker-public-chat", {
+      result: [{
+        id: "not-a-domain-id",
+        service: "thonbecker-public-chat",
+        zone_name: "thonbecker.biz",
+        cert_id: "9fdf92c8-64c2-4a3d-b1af-e15304961145",
+      }],
+    }),
+    /could not be parsed \(hostname is missing\)\. Result fields: cert_id, id, service, zone_name\./,
+  );
+});
+
+test("a retired-worker failure still deploys the other Workers, then reports the cleanup error", async () => {
+  const order: string[] = [];
+  await assert.rejects(
+    () => deployWorkersThenRetire({
+      check: false,
+      deploy: async () => {
+        order.push("deploy");
+      },
+      retire: async () => {
+        order.push("retire");
+        throw new Error("Custom domain for thonbecker-public-chat could not be parsed (hostname is missing).");
+      },
+    }),
+    /The other Workers were deployed\. Retired Worker cleanup failed: Custom domain for thonbecker-public-chat could not be parsed \(hostname is missing\)\./,
+  );
+  assert.deepEqual(order, ["deploy", "retire"]);
+
+  await assert.rejects(
+    () => deployWorkersThenRetire({
+      check: false,
+      deploy: async () => {
+        throw new Error("wrangler failed");
+      },
+      retire: async () => {
+        order.push("retire-after-failed-deploy");
+      },
+    }),
+    /wrangler failed/,
+  );
+  assert.deepEqual(order, ["deploy", "retire"]);
+
+  const checkOrder: string[] = [];
+  await deployWorkersThenRetire({
+    check: true,
+    deploy: async () => {
+      checkOrder.push("deploy");
+    },
+    retire: async () => {
+      checkOrder.push("retire");
+    },
+  });
+  assert.deepEqual(checkOrder, ["deploy"]);
+});
+
+test("treats a missing Worker as success and any other API failure as an error", () => {
+  assert.equal(cloudflareResultKind(200, { success: true }), "ok");
+  assert.equal(cloudflareResultKind(404, { success: false, errors: [{ code: 10007 }] }), "missing");
+  assert.equal(cloudflareResultKind(400, { success: false, errors: [{ code: 10090 }] }), "missing");
+  assert.equal(cloudflareResultKind(400, {
+    success: false,
+    errors: [{ code: 100109, message: "script_reference" }],
+  }), "error");
+  assert.equal(cloudflareResultKind(500, { success: false, errors: [] }), "error");
+});
+
+test("deployment.jsonc does not configure a Worker the deploy is allowed to delete", async () => {
+  const errors: ParseError[] = [];
+  const deployment = validateConfig(parse(
+    await readFile(new URL("../deployment.jsonc", import.meta.url), "utf8"),
+    errors,
+    { allowTrailingComma: true },
+  ) as DeploymentConfig);
+  assert.deepEqual(errors, []);
+  const active = activeWorkerNames(deployment.workers);
+  assertRetirementAllowlist(RETIRED_WORKERS, active);
+  for (const name of RETIRED_WORKERS) assert.equal(active.includes(name), false, name);
 });
 
 test("records a partial deployment rather than dropping what did ship", () => {
